@@ -17,6 +17,7 @@ struct {
 } ptable;
 
 static struct proc *initproc;
+static struct proc *inswapper;
 
 int nextpid = 1;
 extern void forkret(void);
@@ -73,9 +74,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-  
 
-  
   return p;
 }
 
@@ -89,26 +88,32 @@ void createInternalProcess(const char *name, void (*entrypoint)())
     return;
 
   // Copy process state from p.
-  if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return;
+  if((np->pgdir = setupkvm()) == 0){
+    /*if(allocuvm(np->pgdir,PGSIZE,PGSIZE*2) == 0){
+      freevm(np->pgdir);
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return;
+    }*/
   }
-  np->sz = proc->sz;
-  np->parent = proc;
-  *np->tf = *proc->tf;
+  //switchuvm(np);
+  np->sz = PGSIZE;
+  np->parent = initproc;
+  *np->tf = *initproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
   np->tf->eip = (uint)entrypoint;
- 
+  inswapper = np;
+
   np->state = RUNNABLE;
   safestrcpy(np->name, name, sizeof(name));
+
 }
 
 void swapIn()
 {
+  cprintf("swapin\n");
   struct proc* t;
   acquire(&ptable.lock);
   for(;;)
@@ -181,8 +186,9 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-  
+
   createInternalProcess("inswapper", swapIn);
+  cprintf("after createinternalproc\n");
 }
 
 // Grow current process's memory by n bytes.
@@ -211,15 +217,14 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid,fd;
+  int i, pid;
   struct proc *np;
 
   // Allocate process.
   if((np = allocproc()) == 0)
     return -1;
-  if(np->pid > 0)
+  if(np->pid > 1)
   {
-    begin_trans();
     int i = 0;
     char name[8];
     name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
@@ -228,48 +233,8 @@ fork(void)
       name[0] = '0';
     else
       name[0] = (char)(((int)'0')+i);
-    char path = '/';
-    struct inode *ip, *dp;
-    if((dp = nameiparent(&path, name)) == 0)
-      return 0;
-
-    if((ip = ialloc(dp->dev, T_FILE)) == 0)
-      panic("create: ialloc");
-    
-
-    ilock(ip);
-    ip->major = 0;
-    ip->minor = 0;
-    ip->nlink = 1;
-    iupdate(ip);
-
-    if(ip == 0)
-      return 0;
-  
-    
-    
-    if((np->swap = filealloc()) == 0)
-    {
-      if(np->swap)
-	fileclose(np->swap);
-      iunlockput(ip);
-      return 0;
-    }
-    iunlock(ip);
-
-    np->swap->type = FD_INODE;
-    np->swap->ip = ip;
-    np->swap->off = 0;
-    np->swap->readable = !(O_WRONLY);
-    np->swap->writable = (O_WRONLY || O_RDWR);
-    commit_trans();
-    for(fd = 0; fd < NOFILE; fd++){
-    if(np->ofile[fd] == 0){
-      np->ofile[fd] = np->swap;
-      break;
-    }
-  }
-    filewrite(np->swap,"bla",3);
+    np->swap = fileopen(name,(O_CREATE | O_RDWR));
+    filewrite(np->swap,"bla\n",3);
     fileclose(np->swap);
   }
   // Copy process state from p.
@@ -518,12 +483,12 @@ sleep(void *chan, struct spinlock *lk)
   proc->state = SLEEPING;
   
   // Swap out
-  freevm(proc->pgdir);
+  //freevm(proc->pgdir);
   
-  proc->state = SLEEPING_SUSPENDED;
+ // proc->state = SLEEPING_SUSPENDED;
   sched();
-  proc->state = RUNNABLE_SUSPENDED;
-  wakeup(inSwapper);
+//  proc->state = RUNNABLE_SUSPENDED;
+ // wakeup(inswapper);
 
   // Tidy up.
   proc->chan = 0;

@@ -31,6 +31,7 @@ void            fileinit(void);
 int             fileread(struct file*, char*, int n);
 int             filestat(struct file*, struct stat*);
 int             filewrite(struct file*, char*, int n);
+struct file*	fileopen(char *path, int omode);
 
 // fs.c
 void            readsb(int dev, struct superblock *sb);

@@ -276,6 +276,45 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+struct file*
+fileopen(char *path, int omode)
+{
+  int fd;
+  struct file *f;
+  struct inode *ip;
+
+  if(omode & O_CREATE){
+    begin_trans();
+    ip = create(path, T_FILE, 0, 0);
+    commit_trans();
+    if(ip == 0)
+      return 0;
+  } else {
+    if((ip = namei(path)) == 0)
+      return 0;
+    ilock(ip);
+    if(ip->type == T_DIR && omode != O_RDONLY){
+      iunlockput(ip);
+      return 0;
+    }
+  }
+
+  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+    if(f)
+      fileclose(f);
+    iunlockput(ip);
+    return 0;
+  }
+  iunlock(ip);
+
+  f->type = FD_INODE;
+  f->ip = ip;
+  f->off = 0;
+  f->readable = !(omode & O_WRONLY);
+  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+  return f;
+}
+
 int
 sys_open(void)
 {
