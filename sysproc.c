@@ -88,3 +88,15 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+void
+sys_enableSwapping(void)
+{
+  swapFlag = 1;
+}
+
+void
+sys_disableSwapping(void)
+{
+  swapFlag = 0;
+}

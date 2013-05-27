@@ -302,7 +302,6 @@ iunlock(struct inode *ip)
 {
   if(ip == 0 || !(ip->flags & I_BUSY) || ip->ref < 1)
     panic("iunlock");
-
   acquire(&icache.lock);
   ip->flags &= ~I_BUSY;
   wakeup(ip);
@@ -605,12 +604,10 @@ static struct inode*
 namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
-
   if(*path == '/')
     ip = iget(ROOTDEV, ROOTINO);
   else
     ip = idup(proc->cwd);
-
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
     if(ip->type != T_DIR){

@@ -22,6 +22,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+void enableSwapping(void);
+void disableSwapping(void);
 
 // ulib.c
 int stat(char*, struct stat*);

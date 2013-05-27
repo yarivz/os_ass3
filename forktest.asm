@@ -39,7 +39,7 @@ forktest(void)
   int n, pid;
 
   printf(1, "fork test\n");
-  2f:	c7 44 24 04 18 04 00 	movl   $0x418,0x4(%esp)
+  2f:	c7 44 24 04 28 04 00 	movl   $0x428,0x4(%esp)
   36:	00 
   37:	c7 04 24 01 00 00 00 	movl   $0x1,(%esp)
   3e:	e8 bd ff ff ff       	call   0 <printf>
@@ -83,7 +83,7 @@ forktest(void)
     printf(1, "fork claimed to work N times!\n", N);
   7e:	c7 44 24 08 e8 03 00 	movl   $0x3e8,0x8(%esp)
   85:	00 
-  86:	c7 44 24 04 24 04 00 	movl   $0x424,0x4(%esp)
+  86:	c7 44 24 04 34 04 00 	movl   $0x434,0x4(%esp)
   8d:	00 
   8e:	c7 04 24 01 00 00 00 	movl   $0x1,(%esp)
   95:	e8 66 ff ff ff       	call   0 <printf>
@@ -97,7 +97,7 @@ forktest(void)
   a4:	85 c0                	test   %eax,%eax
   a6:	79 19                	jns    c1 <forktest+0x98>
       printf(1, "wait stopped early\n");
-  a8:	c7 44 24 04 43 04 00 	movl   $0x443,0x4(%esp)
+  a8:	c7 44 24 04 53 04 00 	movl   $0x453,0x4(%esp)
   af:	00 
   b0:	c7 04 24 01 00 00 00 	movl   $0x1,(%esp)
   b7:	e8 44 ff ff ff       	call   0 <printf>
@@ -122,7 +122,7 @@ forktest(void)
   d0:	83 f8 ff             	cmp    $0xffffffff,%eax
   d3:	74 19                	je     ee <forktest+0xc5>
     printf(1, "wait got too many\n");
-  d5:	c7 44 24 04 57 04 00 	movl   $0x457,0x4(%esp)
+  d5:	c7 44 24 04 67 04 00 	movl   $0x467,0x4(%esp)
   dc:	00 
   dd:	c7 04 24 01 00 00 00 	movl   $0x1,(%esp)
   e4:	e8 17 ff ff ff       	call   0 <printf>
@@ -131,7 +131,7 @@ forktest(void)
   }
   
   printf(1, "fork test OK\n");
-  ee:	c7 44 24 04 6a 04 00 	movl   $0x46a,0x4(%esp)
+  ee:	c7 44 24 04 7a 04 00 	movl   $0x47a,0x4(%esp)
   f5:	00 
   f6:	c7 04 24 01 00 00 00 	movl   $0x1,(%esp)
   fd:	e8 fe fe ff ff       	call   0 <printf>
@@ -685,3 +685,15 @@ SYSCALL(uptime)
  410:	b8 0e 00 00 00       	mov    $0xe,%eax
  415:	cd 40                	int    $0x40
  417:	c3                   	ret    
+
+00000418 <enableSwapping>:
+SYSCALL(enableSwapping)
+ 418:	b8 16 00 00 00       	mov    $0x16,%eax
+ 41d:	cd 40                	int    $0x40
+ 41f:	c3                   	ret    
+
+00000420 <disableSwapping>:
+SYSCALL(disableSwapping)
+ 420:	b8 17 00 00 00       	mov    $0x17,%eax
+ 425:	cd 40                	int    $0x40
+ 427:	c3                   	ret    

@@ -228,7 +228,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   if(newsz < oldsz)
     return oldsz;
   a = PGROUNDUP(oldsz);
-    cprintf("a = %d\n",a);
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
     if(mem == 0){
@@ -236,10 +235,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       deallocuvm(pgdir, newsz, oldsz);
       return 0;
     }
-  cprintf("allocuvm 2\n");
     memset(mem, 0, PGSIZE);
     mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
-    cprintf("allocuvm 3\n");
   }
   return newsz;
 }

@@ -117,6 +117,7 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+extern int swapFlag;
 
 // swtch.S
 void            swtch(struct context**, struct context*);

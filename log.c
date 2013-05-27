@@ -126,7 +126,7 @@ begin_trans(void)
 {
   acquire(&log.lock);
   while (log.busy) {
-    sleep(&log, &log.lock);
+    //sleep(&log, &log.lock);
   }
   log.busy = 1;
   release(&log.lock);
@@ -144,7 +144,7 @@ commit_trans(void)
   
   acquire(&log.lock);
   log.busy = 0;
-  wakeup(&log);
+  //wakeup(&log);
   release(&log.lock);
 }
 

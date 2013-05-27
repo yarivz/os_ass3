@@ -20,6 +20,7 @@ static struct proc *initproc;
 static struct proc *inswapper;
 
 int nextpid = 1;
+int swapFlag = 1;
 extern void forkret(void);
 extern void trapret(void);
 
@@ -149,6 +150,8 @@ void swapIn()
       }
       
       t->state = RUNNABLE;
+      t->isSwapped = 0;
+      fileclose(t->swap);
       
       // delete fild pid.swap
     }
@@ -187,7 +190,7 @@ userinit(void)
 
   p->state = RUNNABLE;
 
-  createInternalProcess("inswapper", swapIn);
+  //createInternalProcess("inswapper", swapIn);
   cprintf("after createinternalproc\n");
 }
 
@@ -223,20 +226,7 @@ fork(void)
   // Allocate process.
   if((np = allocproc()) == 0)
     return -1;
-  if(np->pid > 1)
-  {
-    int i = 0;
-    char name[8];
-    name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
-    name[1] = (char)(((int)'0')+np->pid % 10);
-    if((i=np->pid/10) == 0)
-      name[0] = '0';
-    else
-      name[0] = (char)(((int)'0')+i);
-    np->swap = fileopen(name,(O_CREATE | O_RDWR));
-    filewrite(np->swap,"bla\n",3);
-    fileclose(np->swap);
-  }
+  
   // Copy process state from p.
   if((np->pgdir = copyuvm(proc->pgdir, proc->sz)) == 0){
     kfree(np->kstack);
@@ -483,12 +473,35 @@ sleep(void *chan, struct spinlock *lk)
   proc->state = SLEEPING;
   
   // Swap out
-  //freevm(proc->pgdir);
+  if(swapFlag)
+  {
+    if(proc->pid > 1)
+    {
+      int i = 0;
+      char name[8];
+      name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
+      name[1] = (char)(((int)'0')+proc->pid % 10);
+      if((i=proc->pid/10) == 0)
+	name[0] = '0';
+      else
+	name[0] = (char)(((int)'0')+i);
+      release(&ptable.lock);
+      proc->swap = fileopen(name,(O_CREATE | O_RDWR));
+      acquire(&ptable.lock);
+      proc->state = SLEEPING_SUSPENDED;
+      //freevm(proc->pgdir);
+       //proc->state = SLEEPING_SUSPENDED;
+      proc->isSwapped = 1;
+    }
   
- // proc->state = SLEEPING_SUSPENDED;
+  }
   sched();
-//  proc->state = RUNNABLE_SUSPENDED;
- // wakeup(inswapper);
+  if(proc->isSwapped)
+  {
+      //proc->state = RUNNABLE_SUSPENDED;
+      proc->state = RUNNABLE;
+    // wakeup(inswapper);
+  }
 
   // Tidy up.
   proc->chan = 0;
