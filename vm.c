@@ -42,7 +42,7 @@ seginit(void)
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
-static pte_t *
+pte_t *
 walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
@@ -284,7 +284,9 @@ freevm(pde_t *pgdir)
   for(i = 0; i < NPDENTRIES; i++){
     if(pgdir[i] & PTE_P){
       char * v = p2v(PTE_ADDR(pgdir[i]));
+      cprintf("before kfree pid = %d\n",proc->pid);
       kfree(v);
+      cprintf("after kfree pid = %d\n",proc->pid);
     }
   }
   kfree((char*)pgdir);

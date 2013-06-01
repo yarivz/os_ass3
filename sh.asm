@@ -293,7 +293,6 @@ main(void)
      285:	90                   	nop
     }
   }
-  
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
      286:	e9 ae 00 00 00       	jmp    339 <main+0xd2>
@@ -310,10 +309,10 @@ main(void)
      29f:	89 44 24 1c          	mov    %eax,0x1c(%esp)
      2a3:	83 7c 24 1c 00       	cmpl   $0x0,0x1c(%esp)
      2a8:	79 c8                	jns    272 <main+0xb>
+      close(fd);
       break;
     }
   }
-  
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
      2aa:	e9 8a 00 00 00       	jmp    339 <main+0xd2>
@@ -368,10 +367,10 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
      338:	90                   	nop
+      close(fd);
       break;
     }
   }
-  
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
      339:	c7 44 24 04 64 00 00 	movl   $0x64,0x4(%esp)

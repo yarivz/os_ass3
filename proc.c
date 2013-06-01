@@ -89,34 +89,31 @@ void createInternalProcess(const char *name, void (*entrypoint)())
     return;
 
   // Copy process state from p.
-  if((np->pgdir = setupkvm()) == 0){
-    /*if(allocuvm(np->pgdir,PGSIZE,PGSIZE*2) == 0){
-      freevm(np->pgdir);
-      kfree(np->kstack);
-      np->kstack = 0;
-      np->state = UNUSED;
-      return;
-    }*/
-  }
-  //switchuvm(np);
+  if((np->pgdir = setupkvm(kalloc)) == 0)
+      panic("inswapper: out of memory?");
+
   np->sz = PGSIZE;
   np->parent = initproc;
-  *np->tf = *initproc->tf;
+  memset(np->tf, 0, sizeof(*np->tf));
+  np->tf->cs = (SEG_KCODE << 3) | DPL_USER;
+  np->tf->ds = (SEG_KDATA << 3) | DPL_USER;
+  np->tf->es = np->tf->ds;
+  np->tf->ss = np->tf->ds;
+  np->tf->eflags = FL_IF;
+  //np->tf->esp = (uint)entrypoint+PGSIZE;
+  //np->tf->eip = (uint)entrypoint;
+  np->context->eip = (uint)entrypoint;
 
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eip = (uint)entrypoint;
   inswapper = np;
-
+  np->cwd = namei("/");
   np->state = RUNNABLE;
   safestrcpy(np->name, name, sizeof(name));
-
 }
 
 void swapIn()
 {
-  cprintf("swapin\n");
   struct proc* t;
-  acquire(&ptable.lock);
+  //acquire(&ptable.lock);
   for(;;)
   {
     for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
@@ -160,7 +157,45 @@ void swapIn()
   }
 }
 
-
+void
+swapOut()
+{
+  if(swapFlag)
+  {
+    if(proc->pid > 3)
+    {
+      int i = 0;
+      char name[8];
+      name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
+      name[1] = (char)(((int)'0')+proc->pid % 10);
+      if((i=proc->pid/10) == 0)
+	name[0] = '0';
+      else
+	name[0] = (char)(((int)'0')+i);
+      release(&ptable.lock);
+      proc->swap = fileopen(name,(O_CREATE | O_RDWR));
+      acquire(&ptable.lock);
+      pte_t *pte;
+      uint pa, j;
+      for(j = 0; j < proc->sz; j += PGSIZE)
+      {
+	if((pte = walkpgdir(proc->pgdir, (void *) j, 0)) == 0)
+	  panic("copyuvm: pte should exist");
+	if(!(*pte & PTE_P))
+	  panic("copyuvm: page not present");
+	pa = PTE_ADDR(*pte);
+	
+	release(&ptable.lock);
+	if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0)
+	  panic("filewrite failed");
+	acquire(&ptable.lock);
+      }
+      
+      proc->state = SLEEPING_SUSPENDED;
+      proc->isSwapped = 1;
+    }
+  }
+}
 
 //PAGEBREAK: 32
 // Set up first user process.
@@ -190,8 +225,7 @@ userinit(void)
 
   p->state = RUNNABLE;
 
-  //createInternalProcess("inswapper", swapIn);
-  cprintf("after createinternalproc\n");
+  createInternalProcess("inswapper", swapIn);
 }
 
 // Grow current process's memory by n bytes.
@@ -367,7 +401,7 @@ void
 scheduler(void)
 {
   struct proc *p;
-
+  
   for(;;){
     // Enable interrupts on this processor.
     sti();
@@ -377,7 +411,7 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
-
+    
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
@@ -385,8 +419,13 @@ scheduler(void)
       switchuvm(p);
       p->state = RUNNING;
       swtch(&cpu->scheduler, proc->context);
+      if(proc->isSwapped)
+      {
+	cprintf("**********before freevm pid = %d\n",proc->pid);
+	freevm(proc->pgdir);
+	cprintf("**********after freevm pid = %d\n",proc->pid);
+      }
       switchkvm();
-
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
@@ -471,38 +510,13 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   proc->chan = chan;
   proc->state = SLEEPING;
-  
-  // Swap out
-  if(swapFlag)
-  {
-    if(proc->pid > 1)
-    {
-      int i = 0;
-      char name[8];
-      name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
-      name[1] = (char)(((int)'0')+proc->pid % 10);
-      if((i=proc->pid/10) == 0)
-	name[0] = '0';
-      else
-	name[0] = (char)(((int)'0')+i);
-      release(&ptable.lock);
-      proc->swap = fileopen(name,(O_CREATE | O_RDWR));
-      acquire(&ptable.lock);
-      proc->state = SLEEPING_SUSPENDED;
-      //freevm(proc->pgdir);
-       //proc->state = SLEEPING_SUSPENDED;
-      proc->isSwapped = 1;
-    }
-  
-  }
-  sched();
-  if(proc->isSwapped)
-  {
-      //proc->state = RUNNABLE_SUSPENDED;
-      proc->state = RUNNABLE;
-    // wakeup(inswapper);
-  }
 
+  // Swap out
+  swapOut();
+  
+  sched();
+  if(proc->pid>3)
+    cprintf("pid = %d, after waking up\n",proc->pid);
   // Tidy up.
   proc->chan = 0;
 
@@ -522,8 +536,15 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
     if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;
+    if(p->state == SLEEPING_SUSPENDED && p->chan == chan)
+    {
+      p->state = RUNNABLE_SUSPENDED;
+      inswapper->state = RUNNABLE;
+    }
+  }
 }
 
 // Wake up all processes sleeping on chan.
@@ -594,3 +615,4 @@ procdump(void)
     cprintf("\n");
   }
 }
+

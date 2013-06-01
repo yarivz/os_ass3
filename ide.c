@@ -109,7 +109,7 @@ ideintr(void)
   // Wake process waiting for this buf.
   b->flags |= B_VALID;
   b->flags &= ~B_DIRTY;
-  wakeup(b);
+  //wakeup(b);
   
   // Start disk on next buf in queue.
   if(idequeue != 0)
@@ -148,8 +148,11 @@ iderw(struct buf *b)
   
   // Wait for request to finish.
   while((b->flags & (B_VALID|B_DIRTY)) != B_VALID){
-    sleep(b, &idelock);
+    if(holding(&idelock))
+      release(&idelock);
+    //sleep(b, &idelock);
   }
 
-  release(&idelock);
+  if(holding(&idelock))
+    release(&idelock);
 }
