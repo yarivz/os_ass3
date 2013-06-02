@@ -69,6 +69,7 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   struct file *swap;		// Swap file for process
+  char swapFileName[8];		// Swap file name
   int isSwapped;		// Swap flag
 };
 

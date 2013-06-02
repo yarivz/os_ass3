@@ -75,7 +75,16 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  int i = 0;
+  char name[8];
+  name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
+  name[1] = (char)(((int)'0')+p->pid % 10);
+  if((i=p->pid/10) == 0)
+    name[0] = '0';
+  else
+    name[0] = (char)(((int)'0')+i);
+  //release(&ptable.lock);
+  safestrcpy(p->swapFileName, name, sizeof(name));
   return p;
 }
 
@@ -106,23 +115,23 @@ void createInternalProcess(const char *name, void (*entrypoint)())
 
   inswapper = np;
   np->cwd = namei("/");
-  np->state = RUNNABLE;
   safestrcpy(np->name, name, sizeof(name));
+  np->state = RUNNABLE;
 }
 
 void swapIn()
 {
   struct proc* t;
-  //acquire(&ptable.lock);
+  //
   for(;;)
   {
     for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
     {
       if(t->state != RUNNABLE_SUSPENDED)
 	continue;
-      
+      cprintf("swapin %s\n",t->swapFileName);
       //open file pid.swap
-      
+      t->swap = fileopen(t->swapFileName,O_RDONLY);
       char buf[PGSIZE];
       int read=0;
       
@@ -145,56 +154,37 @@ void swapIn()
 	  }
 	}
       }
-      
-      t->state = RUNNABLE;
       t->isSwapped = 0;
       fileclose(t->swap);
+      t->state = RUNNABLE;
       
+      //release(&ptable.lock);
       // delete fild pid.swap
     }
     
-    sleep(proc,&ptable.lock);
+    proc->state = SLEEPING;
+    sched();
   }
 }
 
 void
 swapOut()
 {
-  if(swapFlag)
-  {
-    if(proc->pid > 3)
+    proc->swap = fileopen(proc->swapFileName,(O_CREATE | O_RDWR));
+    pte_t *pte;
+    uint pa, j;
+    for(j = 0; j < proc->sz; j += PGSIZE)
     {
-      int i = 0;
-      char name[8];
-      name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
-      name[1] = (char)(((int)'0')+proc->pid % 10);
-      if((i=proc->pid/10) == 0)
-	name[0] = '0';
-      else
-	name[0] = (char)(((int)'0')+i);
-      release(&ptable.lock);
-      proc->swap = fileopen(name,(O_CREATE | O_RDWR));
-      acquire(&ptable.lock);
-      pte_t *pte;
-      uint pa, j;
-      for(j = 0; j < proc->sz; j += PGSIZE)
-      {
-	if((pte = walkpgdir(proc->pgdir, (void *) j, 0)) == 0)
-	  panic("copyuvm: pte should exist");
-	if(!(*pte & PTE_P))
-	  panic("copyuvm: page not present");
-	pa = PTE_ADDR(*pte);
-	
-	release(&ptable.lock);
-	if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0)
-	  panic("filewrite failed");
-	acquire(&ptable.lock);
-      }
-      
-      proc->state = SLEEPING_SUSPENDED;
-      proc->isSwapped = 1;
+      if((pte = walkpgdir(proc->pgdir, (void *) j, 0)) == 0)
+	panic("walkpgdir: pte should exist");
+      if(!(*pte & PTE_P))
+	panic("walkpgdir: page not present");
+      pa = PTE_ADDR(*pte);
+      if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0)
+	panic("filewrite failed");
     }
-  }
+    proc->state = SLEEPING_SUSPENDED;
+    proc->isSwapped = 1;
 }
 
 //PAGEBREAK: 32
@@ -419,13 +409,11 @@ scheduler(void)
       switchuvm(p);
       p->state = RUNNING;
       swtch(&cpu->scheduler, proc->context);
-      if(proc->isSwapped)
-      {
-	cprintf("**********before freevm pid = %d\n",proc->pid);
-	freevm(proc->pgdir);
-	cprintf("**********after freevm pid = %d\n",proc->pid);
-      }
       switchkvm();
+      
+      if(proc && proc->isSwapped)
+	freevm(proc->pgdir);
+      
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
@@ -512,7 +500,15 @@ sleep(void *chan, struct spinlock *lk)
   proc->state = SLEEPING;
 
   // Swap out
-  swapOut();
+  if(swapFlag)
+  {
+    if(proc->pid > 3)
+    {
+      release(&ptable.lock);
+      swapOut();
+      acquire(&ptable.lock);
+    }
+  }
   
   sched();
   if(proc->pid>3)

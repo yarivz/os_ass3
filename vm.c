@@ -284,9 +284,7 @@ freevm(pde_t *pgdir)
   for(i = 0; i < NPDENTRIES; i++){
     if(pgdir[i] & PTE_P){
       char * v = p2v(PTE_ADDR(pgdir[i]));
-      cprintf("before kfree pid = %d\n",proc->pid);
       kfree(v);
-      cprintf("after kfree pid = %d\n",proc->pid);
     }
   }
   kfree((char*)pgdir);
