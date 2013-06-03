@@ -100,6 +100,9 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_enableSwapping(void);
 extern int sys_disableSwapping(void);
+extern int sys_sleep2(void);
+extern int sys_wakeup2(void);
+extern int sys_getAllocatedPages(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -125,6 +128,9 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_enableSwapping]	sys_enableSwapping,
 [SYS_disableSwapping]	sys_disableSwapping,
+[SYS_sleep2]	sys_sleep2,
+[SYS_wakeup2]	sys_wakeup2,
+[SYS_getAllocatedPages]	sys_getAllocatedPages,
 };
 
 void

@@ -104,8 +104,8 @@ void createInternalProcess(const char *name, void (*entrypoint)())
   np->sz = PGSIZE;
   np->parent = initproc;
   memset(np->tf, 0, sizeof(*np->tf));
-  np->tf->cs = (SEG_KCODE << 3);
-  np->tf->ds = (SEG_KDATA << 3);
+  np->tf->cs = (SEG_KCODE << 3)|0;
+  np->tf->ds = (SEG_KDATA << 3)|0;
   np->tf->es = np->tf->ds;
   np->tf->ss = np->tf->ds;
   np->tf->eflags = FL_IF;
@@ -122,18 +122,13 @@ void createInternalProcess(const char *name, void (*entrypoint)())
 void swapIn()
 {
   struct proc* t;
-  //int intena;
   for(;;)
   {
     for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
     {
       if(t->state != RUNNABLE_SUSPENDED)
 	continue;
-      cprintf("swapin %s\n",t->swapFileName);
-      cprintf("intena = %d\n",cpu->intena);
-      //pushcli();
-      //intena = cpu->intena;
-      //cpu->intena = 1;
+      
       //open file pid.swap
       if(holding(&ptable.lock))
 	release(&ptable.lock);
@@ -144,38 +139,36 @@ void swapIn()
 	break;
       }
       acquire(&ptable.lock);
-      char buf[PGSIZE];
-      int read=0;
-      
+            
       // allocate virtual memory
+      if((t->pgdir = setupkvm(kalloc)) == 0)
+	panic("inswapper: out of memory?");
       if(!allocuvm(t->pgdir, 0, t->sz))
       {
 	cprintf("allocuvm failed\n");
 	break;
       }
       
-      uint a = 0;
       if(holding(&ptable.lock))
 	release(&ptable.lock);
-      for(; a < t->sz; a += PGSIZE)
+      loaduvm(t->pgdir,0,t->swap->ip,0,t->sz);
+      
+      t->isSwapped = 0;
+      int fd;
+      for(fd = 0; fd < NOFILE; fd++)
       {
-	if((read = fileread(t->swap, buf, PGSIZE)) > 0)
+	if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)
 	{
-	  if(copyout(t->pgdir,a, buf, read) < 0)
-	  {
-	    cprintf("copyout failed\n");
-	    break;
-	  }
+	  fileclose(proc->ofile[fd]);
+	  proc->ofile[fd] = 0;
+	  break;
 	}
       }
-      t->isSwapped = 0;
-      fileclose(t->swap);
-      t->state = RUNNABLE;
+      proc->swap=0;
+      unlink(t->swapFileName);
       acquire(&ptable.lock);
-      //popcli();
-      //cpu->intena = intena;
-      //release(&ptable.lock);
-      // delete fild pid.swap
+      //cprintf("eip = %d\n",t->tf->eip);
+      t->state = RUNNABLE;
     }
     proc->chan = inswapper;
     proc->state = SLEEPING;
@@ -199,6 +192,19 @@ swapOut()
       if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0)
 	panic("filewrite failed");
     }
+
+    int fd;
+    for(fd = 0; fd < NOFILE; fd++)
+    {
+      if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)
+      {
+	fileclose(proc->ofile[fd]);
+	proc->ofile[fd] = 0;
+	break;
+      }
+    }
+    proc->swap=0;
+    
     proc->state = SLEEPING_SUSPENDED;
     proc->isSwapped = 1;
 }
@@ -429,6 +435,8 @@ scheduler(void)
       
       if(proc && proc->isSwapped)
 	freevm(proc->pgdir);
+	//deallocuvm(proc->pgdir,proc->sz,0);
+	
       
       // Process is done running for now.
       // It should have changed its p->state before coming back.
@@ -527,8 +535,7 @@ sleep(void *chan, struct spinlock *lk)
   }
   
   sched();
-  if(proc->pid>3)
-    cprintf("pid = %d, after waking up\n",proc->pid);
+  
   // Tidy up.
   proc->chan = 0;
 
@@ -628,3 +635,26 @@ procdump(void)
   }
 }
 
+int getAllocatedPages(int pid) {
+  struct proc* p;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+     break;
+    }
+  }
+  release(&ptable.lock);
+   int count= 0, j, k;
+   for (j=0; j<1024; j++) {
+      if(p->pgdir){ 
+	if (p->pgdir[j] & PTE_P) {
+	  pte_t* pte= (pte_t*)p2v(PTE_ADDR(p->pgdir[j]));
+	  for (k=0; k<1024; k++) {
+	      if ( pte[k] & PTE_U )
+		count++;
+	  }
+	}
+      }
+   }
+   return count;
+}

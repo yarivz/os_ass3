@@ -24,6 +24,9 @@ int sleep(int);
 int uptime(void);
 void enableSwapping(void);
 void disableSwapping(void);
+void sleep2(void);
+void wakeup2(void);
+int getAllocatedPages(int pid);
 
 // ulib.c
 int stat(char*, struct stat*);

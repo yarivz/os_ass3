@@ -100,3 +100,34 @@ sys_disableSwapping(void)
 {
   swapFlag = 0;
 }
+
+int
+sys_sleep2(void)
+{
+  acquire(&tickslock);
+  if(proc->killed){
+    release(&tickslock);
+    return -1;
+  }
+  sleep(&swapFlag, &tickslock);
+  release(&tickslock);
+  return 0;
+}
+
+int
+sys_wakeup2(void)
+{
+  wakeup(&swapFlag);
+  return 0;
+}
+
+int
+sys_getAllocatedPages(void)
+{
+  int pid;
+  if(argint(0, &pid) < 0)
+    return -1;
+  return getAllocatedPages(pid);
+}
+
+
