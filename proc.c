@@ -104,8 +104,8 @@ void createInternalProcess(const char *name, void (*entrypoint)())
   np->sz = PGSIZE;
   np->parent = initproc;
   memset(np->tf, 0, sizeof(*np->tf));
-  np->tf->cs = (SEG_KCODE << 3) | DPL_USER;
-  np->tf->ds = (SEG_KDATA << 3) | DPL_USER;
+  np->tf->cs = (SEG_KCODE << 3);
+  np->tf->ds = (SEG_KDATA << 3);
   np->tf->es = np->tf->ds;
   np->tf->ss = np->tf->ds;
   np->tf->eflags = FL_IF;
@@ -122,7 +122,7 @@ void createInternalProcess(const char *name, void (*entrypoint)())
 void swapIn()
 {
   struct proc* t;
-  //
+  //int intena;
   for(;;)
   {
     for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
@@ -130,8 +130,20 @@ void swapIn()
       if(t->state != RUNNABLE_SUSPENDED)
 	continue;
       cprintf("swapin %s\n",t->swapFileName);
+      cprintf("intena = %d\n",cpu->intena);
+      //pushcli();
+      //intena = cpu->intena;
+      //cpu->intena = 1;
       //open file pid.swap
-      t->swap = fileopen(t->swapFileName,O_RDONLY);
+      if(holding(&ptable.lock))
+	release(&ptable.lock);
+      if((t->swap = fileopen(t->swapFileName,O_RDONLY)) == 0)
+      {
+	cprintf("fileopen failed\n");
+	acquire(&ptable.lock);
+	break;
+      }
+      acquire(&ptable.lock);
       char buf[PGSIZE];
       int read=0;
       
@@ -143,6 +155,8 @@ void swapIn()
       }
       
       uint a = 0;
+      if(holding(&ptable.lock))
+	release(&ptable.lock);
       for(; a < t->sz; a += PGSIZE)
       {
 	if((read = fileread(t->swap, buf, PGSIZE)) > 0)
@@ -157,11 +171,13 @@ void swapIn()
       t->isSwapped = 0;
       fileclose(t->swap);
       t->state = RUNNABLE;
-      
+      acquire(&ptable.lock);
+      //popcli();
+      //cpu->intena = intena;
       //release(&ptable.lock);
       // delete fild pid.swap
     }
-    
+    proc->chan = inswapper;
     proc->state = SLEEPING;
     sched();
   }

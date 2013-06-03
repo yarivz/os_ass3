@@ -147,11 +147,11 @@ iderw(struct buf *b)
     idestart(b);
   
   // Wait for request to finish.
-  while((b->flags & (B_VALID|B_DIRTY)) != B_VALID){
-    if(holding(&idelock))
-      release(&idelock);
+    release(&idelock);
+    while((b->flags & (B_VALID|B_DIRTY)) != B_VALID);
+    
+    
     //sleep(b, &idelock);
-  }
 
   if(holding(&idelock))
     release(&idelock);
