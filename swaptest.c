@@ -9,8 +9,9 @@ int main(int argc,char** argv)
   if((pid = fork())==0)
   {
     pid = getpid();
-    printf(1,"Child process Pid = %d has %d memory pages allocated.\nChild process pid = %d is going to sleep and will be swapped out\n",pid,getAllocatedPages(pid),pid);
+    printf(1,"Child process Pid = %d has %d memory pages allocated, going to sleep and will be swapped out\n",pid,getAllocatedPages(pid));
     sleep2();
+    printf(1,"Child process pid = %d has woken up and was swapped in - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
     exit();
   }
   else
@@ -32,14 +33,15 @@ int main(int argc,char** argv)
       printf(1,"Disabling swapping now...\n");
       disableSwapping();
       sleep(1000);
-      printf(1,"Child process Pid = %d has %d memory pages allocated.\nChild process pid = %d will now be woken up\n",pid,getAllocatedPages(pid),pid);
+      printf(1,"Child process Pid = %d is sleeping and swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
       wakeup2();
       sleep(100);
       if((pid = fork())==0)
       {
 	pid = getpid();
-	printf(1,"Child process Pid = %d has %d memory pages allocated.\nChild process pid = %d is going to sleep and WILL NOT be swapped out\n",pid,getAllocatedPages(pid),pid);
+	printf(1,"Child process Pid = %d has %d memory pages allocated, going to sleep and WILL NOT be swapped out\n",pid,getAllocatedPages(pid));
 	sleep2();
+	printf(1,"Child process pid = %d has woken up and was swapped in - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
 	exit();
       }
       else
@@ -52,7 +54,7 @@ int main(int argc,char** argv)
 	else
 	{
 	  sleep(1000);
-	  printf(1,"Child process Pid = %d has %d memory pages allocated.\nChild process pid = %d will now be woken up\n",pid,getAllocatedPages(pid),pid);
+	  printf(1,"Child process Pid = %d is sleeping and swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
 	  wakeup2();
 	}
       }

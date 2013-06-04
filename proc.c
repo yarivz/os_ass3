@@ -173,6 +173,7 @@ void swapIn()
     proc->chan = inswapper;
     proc->state = SLEEPING;
     sched();
+    proc->chan = 0;
   }
 }
 
@@ -204,7 +205,8 @@ swapOut()
       }
     }
     proc->swap=0;
-    
+    //freevm(proc->pgdir);
+    deallocuvm(proc->pgdir,proc->sz,0);
     proc->state = SLEEPING_SUSPENDED;
     proc->isSwapped = 1;
 }
@@ -432,12 +434,7 @@ scheduler(void)
       p->state = RUNNING;
       swtch(&cpu->scheduler, proc->context);
       switchkvm();
-      
-      if(proc && proc->isSwapped)
-	freevm(proc->pgdir);
-	//deallocuvm(proc->pgdir,proc->sz,0);
-	
-      
+                 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       proc = 0;
@@ -590,6 +587,11 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
+      else if(p->state == SLEEPING_SUSPENDED)
+      {
+        p->state = RUNNABLE_SUSPENDED;
+	inswapper->state = RUNNABLE;
+      }
       release(&ptable.lock);
       return 0;
     }
