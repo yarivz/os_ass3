@@ -28,3 +28,5 @@
 #define SYS_getAllocatedPages 26
 #define SYS_shmget	27
 #define SYS_shmdel	28
+#define SYS_shmat	29
+#define SYS_shmdt	30

@@ -29,6 +29,8 @@ void wakeup2(void);
 int getAllocatedPages(int);
 int shmget(int, uint, int);
 int shmdel(int);
+void *shmat(int ,int);
+int shmdt(const void *);
 
 // ulib.c
 int stat(char*, struct stat*);

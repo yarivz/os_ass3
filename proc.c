@@ -20,7 +20,7 @@ static struct proc *initproc;
 static struct proc *inswapper;
 
 int nextpid = 1;
-int swapFlag = 1;
+int swapFlag = 0;
 extern void forkret(void);
 extern void trapret(void);
 

@@ -105,6 +105,8 @@ extern int sys_wakeup2(void);
 extern int sys_getAllocatedPages(void);
 extern int sys_shmget(void);
 extern int sys_shmdel(void);
+extern int shmat(void);
+extern int shmdt(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -135,6 +137,8 @@ static int (*syscalls[])(void) = {
 [SYS_getAllocatedPages]	sys_getAllocatedPages,
 [SYS_shmget]	sys_shmget,
 [SYS_shmdel]	sys_shmdel,
+[SYS_shmat]	sys_shmat,
+[SYS_shmdt]	sys_shmdt,
 };
 
 void

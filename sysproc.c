@@ -138,12 +138,12 @@ sys_shmget(void)
   if(argint(0, &key) < 0)
     return -1;
   
-  if(argint(0, &size) < 0)
+  if(argint(1, &size) < 0)
     return -1;
   if(size<0)
     return -1;
   
-  if(argint(0, &shmflg) < 0)
+  if(argint(2, &shmflg) < 0)
     return -1;
   
   return shmget(key, (uint)size,shmflg);
@@ -157,5 +157,30 @@ sys_shmdel(void)
     return -1;
   
   return shmdel(shmid);
+}
+
+void *
+sys_shmat(void)
+{
+  int shmid,shmflg;
+  
+  if(argint(0, &shmid) < 0)
+    return -1;
+  
+  if(argint(1, &shmflg) < 0)
+    return -1;
+  
+  return shmat(shmid,shmflg);
+}
+
+int 
+sys_shmdt(void)
+{
+  const void* shmaddr;
+  
+  if(argptr(0, &shmaddr,sizeof(void*)) < 0)
+    return -1;
+  
+  return shmdt(shmaddr);
 }
 

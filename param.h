@@ -11,5 +11,7 @@
 #define LOGSIZE      10  // max data sectors in on-disk log
 #define CREAT	20	// shmflag for creating sheard memory
 #define GET	21	// shmflag for getting sheard memory
+#define SHM_RDONLY	22	// shmflag for reading only
+#define SHM_RDWR	23	// shmflag for reading & writing
 
 

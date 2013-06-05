@@ -8,6 +8,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "spinlock.h"
+#include "proc.h"
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
@@ -161,6 +162,7 @@ int shmdel(int shmid)
     acquire(&kmem.lock);
   struct run* ptr;
   for(key = 0,ptr = shm.seg[0];ptr<shm.seg[1024];ptr += sizeof(struct run*),key++)
+  {
     if(shmid == (int)ptr)
     {
       if(shm.refs[key])
@@ -176,9 +178,68 @@ int shmdel(int shmid)
       }
       break;
     }
+  }
   
   if(kmem.use_lock)
     release(&kmem.lock);
   
   return ans;
+}
+
+void *shmat(int shmid, int shmflg)
+{
+  int key;
+  struct run* r;
+  void* ans;
+  char* mem;
+
+  acquire(&shm.lock);
+  struct run* ptr;
+  for(key = 0,ptr = shm.seg[0];ptr<shm.seg[1024];ptr += sizeof(struct run*),key++)
+  {
+    if(shmid == (int)ptr)
+    {
+      if(shm.refs[key])
+      {
+	if(proc->sz + PGSIZE >= KERNBASE)
+	{
+	  ans = (void*)-1;
+	  break;
+	}
+	
+	shm.refs[key]++;
+	
+	for(r = shm.seg[key];r->next && proc->sz < KERNBASE;r = r->next,proc->sz += PGSIZE)
+	{
+	    mem = (char*)r;
+	    
+	    switch(shmflg)
+	    {
+	      case SHM_RDONLY:
+		mappages(proc->pgdir, (char*)proc->sz, PGSIZE, v2p(mem), PTE_U);
+		break;
+	      case SHM_RDWR:
+		mappages(proc->pgdir, (char*)proc->sz, PGSIZE, v2p(mem), PTE_W|PTE_U);
+		break;
+	    } 
+	}
+	break;
+      }
+      else
+      {
+	ans = (void*)-1;
+	break;
+      }
+    }
+  }
+  
+  
+  release(&shm.lock);
+  
+  return ans;
+}
+
+int shmdt(const void *shmaddr)
+{
+  
 }
