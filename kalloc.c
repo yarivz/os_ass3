@@ -192,6 +192,7 @@ void *shmat(int shmid, int shmflg)
   struct run* r;
   void* ans;
   char* mem;
+  uint a;
 
   acquire(&shm.lock);
   struct run* ptr;
@@ -201,7 +202,9 @@ void *shmat(int shmid, int shmflg)
     {
       if(shm.refs[key])
       {
-	if(proc->sz + PGSIZE >= KERNBASE)
+	a = PGROUNDUP(proc->sz);
+	ans = (void*)a;
+	if(a + PGSIZE >= KERNBASE)
 	{
 	  ans = (void*)-1;
 	  break;
@@ -209,17 +212,17 @@ void *shmat(int shmid, int shmflg)
 	
 	shm.refs[key]++;
 	
-	for(r = shm.seg[key];r->next && proc->sz < KERNBASE;r = r->next,proc->sz += PGSIZE)
+	for(r = shm.seg[key];r->next && a < KERNBASE;r = r->next,a += PGSIZE)
 	{
 	    mem = (char*)r;
 	    
 	    switch(shmflg)
 	    {
 	      case SHM_RDONLY:
-		mappages(proc->pgdir, (char*)proc->sz, PGSIZE, v2p(mem), PTE_U);
+		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_U);
 		break;
 	      case SHM_RDWR:
-		mappages(proc->pgdir, (char*)proc->sz, PGSIZE, v2p(mem), PTE_W|PTE_U);
+		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
 		break;
 	    } 
 	}
