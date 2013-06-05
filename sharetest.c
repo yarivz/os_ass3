@@ -9,25 +9,73 @@
 #include "memlayout.h"
 
 
-int main (int args, char** argv) {
-disableSwapping();
+int main (int args, char** argv) 
+{
 
-printf(1, "now allocating shared mem\n");
+  int pid;
+  
+  printf(1, "Starting Shared Memory Test\n\n");
 
-int add = shmget(1, 4000, CREAT);
-printf(1, "allocated in %p\n",add);
-printf(1, "trying to allocate with same key, should fail%d\n",shmget(1, 4000, CREAT));
-printf(1, "trying to get the same add we allocated, should be the same %p %p\n",add,shmget(1, 4000, GET));
+  printf(1, "Allocating 8000 B of Shared memory with key = 1\n\n");
 
-const void * addVa = shmat(add,SHM_RDONLY);
-printf(1, "tring to attach the same add we allocated. should return add va's. va = %d\n",addVa);
-printf(1, "tring to deattach the same add we allocated. should return 0. return value = %d\n",shmdt(addVa));
-addVa = shmat(add,SHM_RDWR);
-printf(1, "tring to attach the same add we allocated. should return add va's. va = %d\n",addVa);
-printf(1, "tring to deattach the same add we allocated. should return 0. return value = %d\n",shmdt(addVa));
+  int shmid = shmget(1, 8000, CREAT);
 
-printf(1, "trying to dealloc, %d\n",shmdel(add));
+  printf(1, "allocated memory in %p\n\n",shmid);
+
+  printf(1, "trying to allocate with same key, should fail, return value = %d\n\n",shmget(1, 4000, CREAT));
+
+  printf(1, "trying to get the same memory we allocated with key = 1, original shmid = %p, returned shmid = %p\n\n",shmid,shmget(1, 4000, GET));
+
+  const void * addVa = shmat(shmid,SHM_RDWR);
+  printf(1, "Attaching Shared memory to main process in RDWR mode, pid = %d, Virtual Address = %p\n\n",getpid(),addVa);
+
+  printf(1, "Trying to attach the same shmid we allocated. should return a different VA: va = %p\n\n",shmat(shmid,SHM_RDWR));
+
+  printf(1, "Creating child process to demonstrate Shared Memory Usage\n\n");
+  
+  if((pid = fork()) == 0)
+  {
+    pid = getpid();
+    char *str = "Hello Father, how are you?\0";
+    char * shm;
+    printf(1, "Child process created, pid = %d\n\n",pid);
+    printf(1, "Getting Shared memory with key = 1, shmid should be the same as in father = %p\n\n",shmid = shmget(1, 4000, GET));
+    printf(1, "Trying to attach the same shmid I got. VA may be different than the father's: va = %p\n\n",addVa = shmat(shmid,SHM_RDWR));
+    printf(1, "Child process writing the String to Shared Memory to be read by the father: Hello Father, how are you?\n\n");
+    shm = (char *)addVa;
+    strcpy(shm,str);
+    
+    printf(1, "Child process wrote to Shared Memory and will now wait until father reads memory and changes first char to *\n\n");
+    while(*((char *)addVa) != '*')
+      sleep(1);
+    
+    printf(1, "Child process released and trying to detach the same VA he got, should return 0. return value = %d\n\n",shmdt(addVa));
+    printf(1, "Child process trying to dealloc Shared memory while father still attached,should fail, return value =  %d\n\n",shmdel(shmid));
+    
+    exit();
+  }
+    
+  printf(1, "Father going to sleep to allow child to run\n\n");
+  sleep(1000);
+  char * shm = (char *)addVa;
+  char str[30];
+  strcpy(str,shm);
+  
+  printf(1, "Father read from memory the String: %s\n\n",str);
+  printf(1, "Father writing '*' to memory to allow child to finish\n\n");
+  *((char*)addVa) = '*';
+
+  printf(1, "Father going to sleep to allow child to run\n\n");
+  sleep(1000);
+  
+  printf(1, "Father trying to detach the same VA he allocated. should return 0. return value = %d\n\n",shmdt(addVa));
+
+  printf(1, "trying to dealloc, should return 0, return value =  %d\n\n",shmdel(shmid));
+
+  wait();
+  
+  exit();
+  }
 
 
-exit();
-}
+  

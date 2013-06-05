@@ -189,7 +189,6 @@ void *shmat(int shmid, int shmflg)
   void* ans;
   char* mem;
   uint a;
-  pte_t * pte;
 
   acquire(&shm.lock);
   for(key = 0;key<numOfSegs;key++)
@@ -217,8 +216,6 @@ void *shmat(int shmid, int shmflg)
 	    {
 	      case SHM_RDONLY:
 		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_U);
-		pte = walkpgdir(proc->pgdir, (char*)a, 0);
-		cprintf("shmat:the virtual kernel addres = %p\n",(int)p2v(*pte)| PTE_U | PTE_P);
 		break;
 	      case SHM_RDWR:
 		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
@@ -251,26 +248,23 @@ int shmdt(const void *shmaddr)
   pte_t *pte;
   uint r, numOfPages;
   int key,found;
-  
+  cprintf("before wlkpgdir\n");
   pte = walkpgdir(proc->pgdir, (char*)shmaddr, 0);
   r = (int)p2v(*pte) ;
-  cprintf("before for\n");
-  //cprintf("a+kernbase = %p\n",a+KERNBASE);
   acquire(&shm.lock);
   for(found = 0,key = 0;key<numOfSegs;key++)
-  {  cprintf("before if1\n");
-    cprintf("(int)shm.seg[key] = %d, r = %d \n",(int)shm.seg[key],r);
+  {    cprintf("in for: (int)shm.seg[key] = %d, r= %d\n",(int)shm.seg[key],r);
 
     if(((int)shm.seg[key]| PTE_U | PTE_P | PTE_W) == r || ((int)shm.seg[key]| PTE_U | PTE_P) == r)
-    {  cprintf("before if2\n");
+    {  
+  cprintf("in if\n");
 
       if(shm.refs[key][1])
-      {
-	//cprintf("second if\n");
+      {  cprintf("in if2\n");
+
 	if(shm.refs[key][0])
 	  shm.refs[key][0]--;
 	numOfPages = shm.refs[key][1];
-	cprintf("numofpages = %d\n",numOfPages);
 	found = 1;
 	break;
       }
@@ -287,10 +281,7 @@ int shmdt(const void *shmaddr)
 
   for(; shmaddr2  < shmaddr + numOfPages*PGSIZE; shmaddr2 += PGSIZE)
   {
-    cprintf("before shmadder = %d\n",shmaddr2);
     pte = walkpgdir(proc->pgdir, (char*)shmaddr2, 0);
-    cprintf("after shmadder = %d\n",shmaddr);
-    cprintf("shmdt: the virtual kernel addres = %p\n",p2v(*pte));
     if(!pte)
       shmaddr2 += (NPTENTRIES - 1) * PGSIZE;
     *pte = 0;
