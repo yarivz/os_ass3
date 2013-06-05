@@ -55,9 +55,10 @@ int
 argptr(int n, char **pp, int size)
 {
   int i;
-  
+
   if(argint(n, &i) < 0)
     return -1;
+
   if((uint)i >= proc->sz || (uint)i+size > proc->sz)
     return -1;
   *pp = (char*)i;
@@ -105,8 +106,8 @@ extern int sys_wakeup2(void);
 extern int sys_getAllocatedPages(void);
 extern int sys_shmget(void);
 extern int sys_shmdel(void);
-extern int shmat(void);
-extern int shmdt(void);
+extern int sys_shmat(void);
+extern int sys_shmdt(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,

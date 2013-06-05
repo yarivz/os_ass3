@@ -13,5 +13,6 @@
 #define GET	21	// shmflag for getting sheard memory
 #define SHM_RDONLY	22	// shmflag for reading only
 #define SHM_RDWR	23	// shmflag for reading & writing
+#define numOfSegs	1024	// maximum number of segments
 
 

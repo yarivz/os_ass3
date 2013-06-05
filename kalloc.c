@@ -24,8 +24,8 @@ struct {
 } kmem;
 
 struct {
-  struct run* seg[1024];
-  int refs[1024];
+  struct run* seg[numOfSegs];
+  int refs[numOfSegs][2];
   struct spinlock lock;
 } shm;
 
@@ -110,76 +110,72 @@ int shmget(int key, uint size, int shmflg)
   switch(shmflg)
   {
     case CREAT:
-      if(!shm.seg[key])
+      if(!shm.refs[key][1])
       {
 	struct run* r = kmem.freelist;
 	size = PGROUNDUP(size);
 	numOfPages = size/PGSIZE;
-	shm.seg[key] = kmem.freelist;
+	shm.seg[key] = (kmem.freelist);
 	
 	for(i=0;i<numOfPages;i++)
 	{
 	  r = r->next;
 	}
 	
-	if(i == numOfPages-1)
+	if(i == numOfPages)
 	{
-	  kmem.freelist = r->next;
+	  for(;kmem.freelist->next!=r;kmem.freelist = kmem.freelist->next);
+	  kmem.freelist->next = 0;
+	  kmem.freelist = r;
 	  ans = (int)shm.seg[key];
-	  shm.refs[key]++;
+	  shm.refs[key][1] = numOfPages;
 	}
 	else
-	{
-	  shm.seg[key] = 0;
 	  ans = -1;
-	}
 	break;
       }
       else
 	ans = -1;
       break;
     case GET:
-      if(!shm.seg[key])
+      if(!shm.refs[key][1])
 	ans = -1;
       else
-      {
 	ans = (int)shm.seg[key];
-	shm.refs[key]++;
-      }
       break;
   }
   if(kmem.use_lock)
     release(&kmem.lock);
-  
   return ans;
 }
 
 int shmdel(int shmid)
 {
-  int key,ans,numOfPages;
+  int key,ans = -1,numOfPages;
   struct run* r;
   if(kmem.use_lock)
     acquire(&kmem.lock);
-  struct run* ptr;
-  for(key = 0,ptr = shm.seg[0];ptr<shm.seg[1024];ptr += sizeof(struct run*),key++)
+  for(key = 0;key<numOfSegs;key++)
   {
-    if(shmid == (int)ptr)
+    if(shmid == (int)shm.seg[key])
     {
-      if(shm.refs[key])
-	ans = -1;
+      if(shm.refs[key][0])
+	break;
       else
       {
-	for(r = shm.seg[key],numOfPages=0;r->next;r = r->next,numOfPages++)
+	for(r = shm.seg[key],numOfPages=1;r->next;r = r->next,numOfPages++)
+	{
 	  // Fill with junk to catch dangling refs.
 	  memset(r, 1, PGSIZE);
+	}
 	r->next = kmem.freelist;
 	kmem.freelist = shm.seg[key];
+	shm.refs[key][1] = 0;
 	ans = numOfPages;
       }
       break;
     }
   }
-  
   if(kmem.use_lock)
     release(&kmem.lock);
   
@@ -188,19 +184,19 @@ int shmdel(int shmid)
 
 void *shmat(int shmid, int shmflg)
 {
-  int key;
+  int key,forFlag=0;
   struct run* r;
   void* ans;
   char* mem;
   uint a;
+  pte_t * pte;
 
   acquire(&shm.lock);
-  struct run* ptr;
-  for(key = 0,ptr = shm.seg[0];ptr<shm.seg[1024];ptr += sizeof(struct run*),key++)
+  for(key = 0;key<numOfSegs;key++)
   {
-    if(shmid == (int)ptr)
+    if(shmid == (int)shm.seg[key])
     {
-      if(shm.refs[key])
+      if(shm.refs[key][1])
       {
 	a = PGROUNDUP(proc->sz);
 	ans = (void*)a;
@@ -210,22 +206,29 @@ void *shmat(int shmid, int shmflg)
 	  break;
 	}
 	
-	shm.refs[key]++;
+	shm.refs[key][0]++;
 	
-	for(r = shm.seg[key];r->next && a < KERNBASE;r = r->next,a += PGSIZE)
+	for(r = shm.seg[key];r && a < KERNBASE;r = r->next,a += PGSIZE)
 	{
+	    forFlag = 1;
 	    mem = (char*)r;
 	    
 	    switch(shmflg)
 	    {
 	      case SHM_RDONLY:
 		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_U);
+		pte = walkpgdir(proc->pgdir, (char*)a, 0);
+		cprintf("shmat:the virtual kernel addres = %p\n",(int)p2v(*pte)| PTE_U | PTE_P);
 		break;
 	      case SHM_RDWR:
 		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
 		break;
+	      default:
+		forFlag = 0;
 	    } 
 	}
+	if(forFlag)
+	  proc->sz = a;
 	break;
       }
       else
@@ -244,5 +247,54 @@ void *shmat(int shmid, int shmflg)
 
 int shmdt(const void *shmaddr)
 {
+ 
+  pte_t *pte;
+  uint r, numOfPages;
+  int key,found;
   
+  pte = walkpgdir(proc->pgdir, (char*)shmaddr, 0);
+  r = (int)p2v(*pte) ;
+  cprintf("before for\n");
+  //cprintf("a+kernbase = %p\n",a+KERNBASE);
+  acquire(&shm.lock);
+  for(found = 0,key = 0;key<numOfSegs;key++)
+  {  cprintf("before if1\n");
+    cprintf("(int)shm.seg[key] = %d, r = %d \n",(int)shm.seg[key],r);
+
+    if(((int)shm.seg[key]| PTE_U | PTE_P | PTE_W) == r || ((int)shm.seg[key]| PTE_U | PTE_P) == r)
+    {  cprintf("before if2\n");
+
+      if(shm.refs[key][1])
+      {
+	//cprintf("second if\n");
+	if(shm.refs[key][0])
+	  shm.refs[key][0]--;
+	numOfPages = shm.refs[key][1];
+	cprintf("numofpages = %d\n",numOfPages);
+	found = 1;
+	break;
+      }
+      else
+	return -1;
+    }
+  }
+  release(&shm.lock);
+  
+  if(!found)
+    return -1;
+
+  void * shmaddr2 = (void*)shmaddr;
+
+  for(; shmaddr2  < shmaddr + numOfPages*PGSIZE; shmaddr2 += PGSIZE)
+  {
+    cprintf("before shmadder = %d\n",shmaddr2);
+    pte = walkpgdir(proc->pgdir, (char*)shmaddr2, 0);
+    cprintf("after shmadder = %d\n",shmaddr);
+    cprintf("shmdt: the virtual kernel addres = %p\n",p2v(*pte));
+    if(!pte)
+      shmaddr2 += (NPTENTRIES - 1) * PGSIZE;
+    *pte = 0;
+  }
+
+  return 0;
 }

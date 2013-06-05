@@ -165,10 +165,10 @@ sys_shmat(void)
   int shmid,shmflg;
   
   if(argint(0, &shmid) < 0)
-    return -1;
+    return (void*)-1;
   
   if(argint(1, &shmflg) < 0)
-    return -1;
+    return (void*)-1;
   
   return shmat(shmid,shmflg);
 }
@@ -176,11 +176,9 @@ sys_shmat(void)
 int 
 sys_shmdt(void)
 {
-  const void* shmaddr;
-  
-  if(argptr(0, &shmaddr,sizeof(void*)) < 0)
+  void* shmaddr;
+  if(argptr(0, (void*)&shmaddr,sizeof(void*)) < 0)
     return -1;
-  
   return shmdt(shmaddr);
 }
 
