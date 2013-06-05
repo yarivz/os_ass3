@@ -26,3 +26,5 @@
 #define SYS_sleep2 24
 #define SYS_wakeup2 25
 #define SYS_getAllocatedPages 26
+#define SYS_shmget	27
+#define SYS_shmdel	28

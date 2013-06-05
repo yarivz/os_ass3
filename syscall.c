@@ -103,6 +103,8 @@ extern int sys_disableSwapping(void);
 extern int sys_sleep2(void);
 extern int sys_wakeup2(void);
 extern int sys_getAllocatedPages(void);
+extern int sys_shmget(void);
+extern int sys_shmdel(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -131,6 +133,8 @@ static int (*syscalls[])(void) = {
 [SYS_sleep2]	sys_sleep2,
 [SYS_wakeup2]	sys_wakeup2,
 [SYS_getAllocatedPages]	sys_getAllocatedPages,
+[SYS_shmget]	sys_shmget,
+[SYS_shmdel]	sys_shmdel,
 };
 
 void

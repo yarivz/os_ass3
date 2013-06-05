@@ -22,6 +22,12 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct run* seg[1024];
+  int refs[1024];
+  struct spinlock lock;
+} shm;
+
 // Initialization happens in two phases.
 // 1. main() calls kinit1() while still using entrypgdir to place just
 // the pages mapped by entrypgdir on free list.
@@ -94,3 +100,85 @@ kalloc(void)
   return (char*)r;
 }
 
+
+int shmget(int key, uint size, int shmflg)
+{
+  int numOfPages,i,ans;
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+  switch(shmflg)
+  {
+    case CREAT:
+      if(!shm.seg[key])
+      {
+	struct run* r = kmem.freelist;
+	size = PGROUNDUP(size);
+	numOfPages = size/PGSIZE;
+	shm.seg[key] = kmem.freelist;
+	
+	for(i=0;i<numOfPages;i++)
+	{
+	  r = r->next;
+	}
+	
+	if(i == numOfPages-1)
+	{
+	  kmem.freelist = r->next;
+	  ans = (int)shm.seg[key];
+	  shm.refs[key]++;
+	}
+	else
+	{
+	  shm.seg[key] = 0;
+	  ans = -1;
+	}
+	break;
+      }
+      else
+	ans = -1;
+      break;
+    case GET:
+      if(!shm.seg[key])
+	ans = -1;
+      else
+      {
+	ans = (int)shm.seg[key];
+	shm.refs[key]++;
+      }
+      break;
+  }
+  if(kmem.use_lock)
+    release(&kmem.lock);
+  
+  return ans;
+}
+
+int shmdel(int shmid)
+{
+  int key,ans,numOfPages;
+  struct run* r;
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+  struct run* ptr;
+  for(key = 0,ptr = shm.seg[0];ptr<shm.seg[1024];ptr += sizeof(struct run*),key++)
+    if(shmid == (int)ptr)
+    {
+      if(shm.refs[key])
+	ans = -1;
+      else
+      {
+	for(r = shm.seg[key],numOfPages=0;r->next;r = r->next,numOfPages++)
+	  // Fill with junk to catch dangling refs.
+	  memset(r, 1, PGSIZE);
+	r->next = kmem.freelist;
+	kmem.freelist = shm.seg[key];
+	ans = numOfPages;
+      }
+      break;
+    }
+  
+  if(kmem.use_lock)
+    release(&kmem.lock);
+  
+  return ans;
+}

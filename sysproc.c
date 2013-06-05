@@ -130,4 +130,32 @@ sys_getAllocatedPages(void)
   return getAllocatedPages(pid);
 }
 
+int 
+sys_shmget(void)
+{
+  int key,size, shmflg;
+  
+  if(argint(0, &key) < 0)
+    return -1;
+  
+  if(argint(0, &size) < 0)
+    return -1;
+  if(size<0)
+    return -1;
+  
+  if(argint(0, &shmflg) < 0)
+    return -1;
+  
+  return shmget(key, (uint)size,shmflg);
+}
+
+int 
+sys_shmdel(void)
+{
+  int shmid;
+  if(argint(0, &shmid) < 0)
+    return -1;
+  
+  return shmdel(shmid);
+}
 
