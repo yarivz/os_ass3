@@ -72,7 +72,7 @@ int 		shmget(int, uint, int);
 int 		shmdel(int);
 void *		shmat(int, int);
 int 		shmdt(const void *);
-
+void		deallocshm(int);
 
 // kbd.c
 void            kbdintr(void);

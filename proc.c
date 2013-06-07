@@ -322,7 +322,10 @@ exit(void)
 
   iput(proc->cwd);
   proc->cwd = 0;
-
+  
+  if(proc->has_shm)
+    deallocshm(proc->pid);		//deallocate any shared memory segments proc did not shmdt
+  
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
