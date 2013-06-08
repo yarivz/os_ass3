@@ -37,19 +37,20 @@ int main (int args, char** argv)
   if((pid = fork()) == 0)
   {
     pid = getpid();
-    ////char *str = "Hello Father, how are you?\0";
-    //char * shm;
+    char *str = "Hello Father, how are you?\0";
+    char * shm;
     printf(1, "Child process created, pid = %d\n\n",pid);
     printf(1, "Getting Shared memory with key = 1, shmid should be the same as in father = %p\n\n",shmid = shmget(1, 4000, GET));
     printf(1, "Trying to attach the same shmid I got. VA may be different than the father's: va = %p\n\n",addVa = shmat(shmid,SHM_RDWR));
     printf(1, "Child process writing the String to Shared Memory to be read by the father: Hello Father, how are you?\n\n");
-    //shm = (char *)addVa;
-    //strcpy(shm,str);
+    shm = (char *)addVa;
+    strcpy(shm,str);
     
     printf(1, "Child process wrote to Shared Memory and will now wait until father reads memory and changes first char to *\n\n");
-    //while(*((char *)addVa) != '*')
-     // sleep(1);
+    while(*((char *)addVa) != '*')
+      sleep(1);
     
+    sleep(1);
     printf(1, "Child process released and trying to detach the same VA he got, should return 0. return value = %d\n\n",shmdt(addVa));
     printf(1, "Child process trying to dealloc Shared memory while father still attached,should fail, return value =  %d\n\n",shmdel(shmid));
    
@@ -65,25 +66,51 @@ int main (int args, char** argv)
     
   printf(1, "Father going to sleep to allow child to run\n\n");
   sleep(1000);
-  //char * shm = (char *)addVa;
-  //char str[30];
-  //strcpy(str,shm);
+  char * shm = (char *)addVa;
+  char str[30];
+  strcpy(str,shm);
   
-  //printf(1, "Father read from memory the String: %s\n\n",str);
+  printf(1, "Father read from memory the String: %s\n\n",str);
   
    
   printf(1, "Father writing '*' to memory to allow child to finish\n\n");
-  //*((char*)addVa) = '*';
+  *((char*)addVa) = '*';
 
-  printf(1, "Father going to sleep to allow child to run\n\n");
-  sleep(1000);
+  printf(1, "Father is waiting allow child to run\n\n");
+  
+  wait();
+  
+  printf(1, "Creating another child process to demonstrate freeing left over Shared Memory on exit\n\n");
+  
+  if((pid = fork()) == 0)
+  {
+    pid = getpid();
+    char *str = "2nd child exited without shmdt\0";
+    char * shm;
+    printf(1, "Child process created, pid = %d\n\n",pid);
+    printf(1, "Getting Shared memory with key = 1, shmid should be the same as in father = %p\n\n",shmid = shmget(1, 4000, GET));
+    printf(1, "Trying to attach the same shmid I got. VA may be different than the father's: va = %p\n\n",addVa = shmat(shmid,SHM_RDWR));
+    printf(1, "Child process writing the String to Shared Memory to be read by the father: 2nd child exited without shmdt\n\n");
+    shm = (char *)addVa;
+    strcpy(shm,str);
+    
+    printf(1, "Child process exiting without calling shmdt\n");
+    exit();
+  }
+  
+  printf(1, "Father waiting to allow 2nd child to run\n\n");
+  wait();
+  
+  
+  shm = (char *)addVa;
+  strcpy(str,shm);
+  
+  printf(1, "Father read from memory the String: %s\n\n",str);
   
   printf(1, "Father trying to detach both VAs he allocated. should return 0,0. return value = %d,%d\n\n",shmdt(addVa),shmdt(addVa2));
 
-  printf(1, "trying to dealloc, should return 0, return value =  %d\n\n",shmdel(shmid));
+  printf(1, "trying to dealloc, should return the number of pages, return value =  %d\n\n",shmdel(shmid));
 
-  wait();
-  
   exit();
   }
 

@@ -3,7 +3,8 @@
 
 int main(int argc,char** argv)
 {
-  int i,pid;
+  int pid;
+  printf(1,"\n**************** PART 1 *****************\n\n");
   printf(1,"Enabling swapping now...\n");
   enableSwapping();
   if((pid = fork())==0)
@@ -30,12 +31,19 @@ int main(int argc,char** argv)
     }
     else
     {
+      for(j=0;j<10000000;j++)
+      {
+	k = j;
+	j = j+1;
+	j = k;
+      }
+      printf(1,"\nChild process Pid = %d is sleeping and swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
+      wakeup2();
+      while(wait()>0);
+      
+      printf(1,"\n\n**************** PART 2 *****************\n\n");
       printf(1,"Disabling swapping now...\n");
       disableSwapping();
-      sleep(1000);
-      printf(1,"Child process Pid = %d is sleeping and swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
-      wakeup2();
-      sleep(100);
       if((pid = fork())==0)
       {
 	pid = getpid();
@@ -53,15 +61,14 @@ int main(int argc,char** argv)
 	}
 	else
 	{
-	  sleep(1000);
-	  printf(1,"Child process Pid = %d is sleeping and swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
+	  sleep(100);
+	  printf(1,"\nChild process Pid = %d is sleeping and NOT swapped out - has %d memory pages allocated.\n",pid,getAllocatedPages(pid));
 	  wakeup2();
 	}
       }
     }
   }
   
-  for(i=0;i<4;i++)
-    wait();
+  while(wait()>0);
   exit();
 }

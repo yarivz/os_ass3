@@ -117,7 +117,7 @@ shmget(int key, uint size, int shmflg)
   {
     case CREAT:
       if(shm.refs[key][1][64] == 0)
-      {
+      {cprintf("before for 1\n");
 	sz = PGROUNDUP(size);
 	numOfPages = sz/PGSIZE;
 	for(i=0;i<numOfPages;i++)
@@ -125,21 +125,24 @@ shmget(int key, uint size, int shmflg)
 	  if((shm.seg[key][i] = kalloc()) == 0)
 	    break;
 	}
-	
+	cprintf("after for 1\n");
 	if(i == numOfPages)
-	{
+	{cprintf("in if 1\n");
 	  ans = (int)shm.seg[key][0];
 	  shm.refs[key][1][64] = numOfPages;
 	}
 	else
-	{
+	{cprintf("in else 1\n");
 	  for(j=0;j<i;j++)
 	    kfree(shm.seg[key][j]);
 	  ans = -1;
 	}
       }
       else
+      {
+	cprintf("in else 2\n");
 	ans = -1;
+      }
       break;
     case GET:
       if(!shm.refs[key][1][64])
@@ -167,11 +170,14 @@ shmdel(int shmid)
       {
 	numOfPages=shm.refs[key][1][64];
 	for(i=0;i<numOfPages;i++)
+	{
 	    kfree(shm.seg[key][i]);
+	    shm.refs[key][1][64]--;
+	}
       }
       ans = numOfPages;
+      break;
     }
-    break;
   }  
   return ans;
 }
@@ -288,7 +294,6 @@ shmdt(const void *shmaddr)
 void 
 deallocshm(int pid)
 {
-  cprintf("in deallocshm\n");	
   uint a = 0;
   int key, pa, numOfPages;
   pte_t *pte;

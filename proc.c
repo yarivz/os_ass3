@@ -18,9 +18,12 @@ struct {
 
 static struct proc *initproc;
 static struct proc *inswapper;
+static struct spinlock swaplock;
 
 int nextpid = 1;
 int swapFlag = 0;
+int swappedout = 0;
+
 extern void forkret(void);
 extern void trapret(void);
 
@@ -30,6 +33,7 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  initlock(&swaplock, "swaplock");
 }
 
 //PAGEBREAK: 32
@@ -124,6 +128,7 @@ void swapIn()
   struct proc* t;
   for(;;)
   {
+swapin:
     for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
     {
       if(t->state != RUNNABLE_SUSPENDED)
@@ -166,14 +171,29 @@ void swapIn()
       }
       proc->swap=0;
       unlink(t->swapFileName);
+      
       acquire(&ptable.lock);
-      //cprintf("eip = %d\n",t->tf->eip);
       t->state = RUNNABLE;
+      
+      acquire(&swaplock);
+      swappedout--;
+      release(&swaplock);
     }
+   
+    acquire(&swaplock);
+    if(swappedout > 0)
+    {
+      release(&swaplock);
+      goto swapin;
+    }
+    else
+      release(&swaplock);
+
     proc->chan = inswapper;
     proc->state = SLEEPING;
-    sched();
-    proc->chan = 0;
+     
+     sched();
+     proc->chan = 0;
   }
 }
 
@@ -553,15 +573,19 @@ static void
 wakeup1(void *chan)
 {
   struct proc *p;
-
+  int found_suspended = 0;
+  
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;
-    if(p->state == SLEEPING_SUSPENDED && p->chan == chan)
+    if(p->state == SLEEPING_SUSPENDED && p->chan == chan && !found_suspended)
     {
+      acquire(&swaplock);
+      swappedout++;
       p->state = RUNNABLE_SUSPENDED;
       inswapper->state = RUNNABLE;
+      release(&swaplock);
     }
   }
 }
