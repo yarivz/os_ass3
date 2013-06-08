@@ -155,8 +155,5 @@ iderw(struct buf *b)
 	acquire(&idelock); 
     }
     
-    
-    //sleep(b, &idelock);
-
     release(&idelock);
 }

@@ -162,14 +162,16 @@ swapin:
       int fd;
       for(fd = 0; fd < NOFILE; fd++)
       {
-	if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)
+	//cprintf("fd = %d, t->ofile[fd] = %d, t->swap = %d\n",fd,proc->ofile[fd], t->swap);
+	if(proc->ofile[fd] && proc->ofile[fd] == t->swap)
 	{
+	  //cprintf("fileclose swap in\n");
 	  fileclose(proc->ofile[fd]);
 	  proc->ofile[fd] = 0;
 	  break;
 	}
       }
-      proc->swap=0;
+      t->swap=0;
       unlink(t->swapFileName);
       
       acquire(&ptable.lock);
