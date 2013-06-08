@@ -94,7 +94,7 @@ int main (int args, char** argv)
     shm = (char *)addVa;
     strcpy(shm,str);
     
-    printf(1, "Child process exiting without calling shmdt\n");
+    printf(1, "Child process exiting without calling shmdt\n\n");
     exit();
   }
   
