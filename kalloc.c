@@ -24,7 +24,7 @@ struct {
 } kmem;
 
 struct {
-  struct run* seg[numOfSegs];
+  char* seg[numOfSegs][numOfSegs];
   int refs[numOfSegs][2][65];
   struct spinlock lock;
 } shm;
@@ -105,36 +105,38 @@ kalloc(void)
 int 
 shmget(int key, uint size, int shmflg)
 {
-  int numOfPages,i,ans;
+  int numOfPages,i,j,ans;
   uint sz;
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
+  if(key < 0 || key > 1023)
+  {
+    cprintf("Illegal key exception, value must be between 0-1023\n");
+    return -1;
+  }
+  
   switch(shmflg)
   {
     case CREAT:
       if(shm.refs[key][1][64] == 0)
       {
-	struct run* r = kmem.freelist;
 	sz = PGROUNDUP(size);
 	numOfPages = sz/PGSIZE;
-	shm.seg[key] = (kmem.freelist);
-	
 	for(i=0;i<numOfPages;i++)
 	{
-	  r = r->next;
+	  if((shm.seg[key][i] = kalloc()) == 0)
+	    break;
 	}
 	
 	if(i == numOfPages)
 	{
-	  for(;kmem.freelist->next!=r;kmem.freelist = kmem.freelist->next){}
-	  kmem.freelist->next = 0;
-	  kmem.freelist = r;
-	  ans = (int)shm.seg[key];
+	  ans = (int)shm.seg[key][0];
 	  shm.refs[key][1][64] = numOfPages;
 	}
 	else
+	{
+	  for(j=0;j<i;j++)
+	    kfree(shm.seg[key][j]);
 	  ans = -1;
-	break;
+	}
       }
       else
 	ans = -1;
@@ -143,24 +145,19 @@ shmget(int key, uint size, int shmflg)
       if(!shm.refs[key][1][64])
 	ans = -1;
       else
-	ans = (int)shm.seg[key];
+	ans = (int)shm.seg[key][0];
       break;
   }
-  if(kmem.use_lock)
-    release(&kmem.lock);
   return ans;
 }
 
 int 
 shmdel(int shmid)
 {
-  int key,ans = -1,numOfPages,i,haveNext;
-  struct run* r,*next;
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
+  int key,ans = -1,numOfPages,i;
   for(key = 0;key<numOfSegs;key++)
   {
-    if(shmid == (int)shm.seg[key])
+    if(shmid == (int)shm.seg[key][0])
     {
       if(shm.refs[key][0][64]>0)
       {
@@ -168,78 +165,29 @@ shmdel(int shmid)
       }
       else
       {
-	haveNext = 0;
-	r = shm.seg[key];
 	numOfPages=shm.refs[key][1][64];
-	
-	for(;0 < numOfPages;numOfPages--,haveNext = 0)
-	{
-	  for(i=1;i<numOfPages;i++)
-	  {
-	    next = r->next;
-	    haveNext = 1;
-	  }
-	  
-	  if(haveNext)
-	  {
-	    char* v = (char*)next;
-	    memset(v, 1, PGSIZE);
-	    next = (struct run*)v;
-	    next->next = kmem.freelist;
-	    kmem.freelist = next;
-	  }
-	  else
-	  {
-	    char* v = (char*)r;
-	    memset(v, 1, PGSIZE);
-	    r = (struct run*)v;
-	    r->next = kmem.freelist;
-	    kmem.freelist = r;
-	  }
-	 /* cprintf("before memset, numOfPages = %d\n",numOfPages);
-	  if(numOfPages>1)
-	    next = r->next;
-	  cprintf("r = %d, next = %d\n",r,next);
-	  
-	  // Fill with junk to catch dangling refs.
-	  char* v = (char*)r;
-	  memset(v, 1, PGSIZE);
-	  cprintf("r = %d, next = %d\n",r,next);
-  	  r = (struct run*)v;
-	  r->next = kmem.freelist;
-	  kmem.freelist = r;
-	  
-	  r = next;
-	  
-	  cprintf("after memset\n");*/
-	}
-	r->next = kmem.freelist;
-	kmem.freelist = shm.seg[key];
-	shm.refs[key][1][64] = 0;
-	ans = numOfPages;
+	for(i=0;i<numOfPages;i++)
+	    kfree(shm.seg[key][i]);
       }
-      break;
+      ans = numOfPages;
     }
-  }
-  if(kmem.use_lock)
-    release(&kmem.lock);
-  
+    break;
+  }  
   return ans;
 }
 
 void *
 shmat(int shmid, int shmflg)
 {
-  int key,forFlag=0;
-  struct run* r;
-  void* ans;
+  int i,key,forFlag=0;
+  void* ans = (void*)-1;
   char* mem;
   uint a;
 
   acquire(&shm.lock);
   for(key = 0;key<numOfSegs;key++)
   {
-    if(shmid == (int)shm.seg[key])
+    if(shmid == (int)shm.seg[key][0])
     {
       if(shm.refs[key][1][64]>0)
       {
@@ -255,11 +203,10 @@ shmat(int shmid, int shmflg)
 	shm.refs[key][0][proc->pid] = 1;
 	proc->has_shm++;
 	
-	for(r = shm.seg[key];r && a < KERNBASE;r = r->next,a += PGSIZE)
+	for(i = 0;i < shm.refs[key][1][64] && a < KERNBASE;i++,a += PGSIZE)
 	{
 	    forFlag = 1;
-	    mem = (char*)r;
-	    
+	    mem = shm.seg[key][i];
 	    switch(shmflg)
 	    {
 	      case SHM_RDONLY:
@@ -274,26 +221,21 @@ shmat(int shmid, int shmflg)
 	}
 	if(forFlag)
 	  proc->sz = a;
+	else
+	  ans = (void*)-1;
 	break;
       }
       else
-      {
-	ans = (void*)-1;
-	break;
-      }
+      	break;
     }
   }
-  
-  
   release(&shm.lock);
-  
   return ans;
 }
 
 int 
 shmdt(const void *shmaddr)
 {
- 
   pte_t *pte;
   uint r, numOfPages;
   int key,found;
@@ -302,12 +244,16 @@ shmdt(const void *shmaddr)
   acquire(&shm.lock);
   for(found = 0,key = 0;key<numOfSegs;key++)
   {    
-    if((int)shm.seg[key] == r)
+    if((int)shm.seg[key][0] == r)
     {  
       if(shm.refs[key][1][64]>0)
       { 
-	if(shm.refs[key][0][64] > 0)
-	  shm.refs[key][0][64]--;
+	if(shm.refs[key][0][64] <= 0)
+	{
+	  cprintf("shmdt exception - trying to detach a segment with no references\n");
+	  return -1;
+	}
+	shm.refs[key][0][64]--;
 	shm.refs[key][0][proc->pid] = 0;
 	proc->has_shm--;
 	numOfPages = shm.refs[key][1][64];
@@ -315,7 +261,10 @@ shmdt(const void *shmaddr)
 	break;
       }
       else
+      {
+	cprintf("shmdt exception - trying to detach a segment with no pages\n");
 	return -1;
+      }
     }
   }
   release(&shm.lock);
@@ -357,7 +306,7 @@ deallocshm(int pid)
 	else if((*pte & PTE_P) != 0)
 	{
 	  pa = (int)p2v(PTE_ADDR(*pte));
-	  if((int)shm.seg[key] == pa)
+	  if((int)shm.seg[key][0] == pa)
 	  {
 	    void *b = (void*)a;
 	    numOfPages = shm.refs[key][1][64];
@@ -369,7 +318,7 @@ deallocshm(int pid)
 	      *pte = 0;
 	    }
 	    if(shm.refs[key][0][64]>0)
-	    shm.refs[key][0][64]--;
+	      shm.refs[key][0][64]--;
 	    break;
 	  }
 	}
@@ -377,6 +326,5 @@ deallocshm(int pid)
     }
   }
   release(&shm.lock);
-
 }
         
