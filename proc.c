@@ -618,8 +618,11 @@ kill(int pid)
         p->state = RUNNABLE;
       else if(p->state == SLEEPING_SUSPENDED)
       {
-        p->state = RUNNABLE_SUSPENDED;
-	inswapper->state = RUNNABLE;
+        acquire(&swaplock);
+      	swappedout++;
+      	p->state = RUNNABLE_SUSPENDED;
+      	inswapper->state = RUNNABLE;
+      	release(&swaplock);
       }
       release(&ptable.lock);
       return 0;
