@@ -19,6 +19,7 @@ struct {
 static struct proc *initproc;
 static struct proc *inswapper;		//the inswapper proc
 static struct spinlock swaplock;	//spinlock to sync access to the inswapper
+static struct spinlock wakeuplock;
 
 int nextpid = 1;
 int swapFlag = 0;			//global flag to indicate if swapping is enabled (1) or disabled (0)
@@ -34,6 +35,7 @@ pinit(void)
 {
   initlock(&ptable.lock, "ptable");
   initlock(&swaplock, "swaplock");
+  initlock(&wakeuplock, "wakeuplock");
 }
 
 //PAGEBREAK: 32
@@ -544,22 +546,31 @@ sleep(void *chan, struct spinlock *lk)
   // Swap out
   if(swapFlag)			//check if swapping out is enabled
   {
-    if(proc->pid > 2)		//do not allow init and inswapper to swapout
+    if(proc->pid > 3)		//do not allow init and inswapper to swapout
     {
       proc->wokenUp = 0;
       proc->swappingOut = 1;
+      
+      //if(!holding(&wakeuplock));
+      //{
+	//cprintf("swapping, proc = %d\n",proc->pid);
+	//acquire(&wakeuplock);
+      //}
       release(&ptable.lock);	
       swapOut();		//swap out proc
       acquire(&ptable.lock);
+      proc->swappingOut = 0;	//oran
+      //release(&wakeuplock);
       if(proc->wokenUp == 1)
       {
+	proc->wokenUp = 0;	//oran
 	proc->state = RUNNABLE_SUSPENDED;
 	inswapper->state = RUNNABLE;
       }
       else
       {
 	proc->state = SLEEPING_SUSPENDED;					//set proc to SLEEPING_SUSPENDED
-	proc->swappingOut = 0;						//set flag indicating proc is swapped out
+	//proc->swappingOut = 0;	//oran						//set flag indicating proc is swapped out
       }
     }
   }
@@ -589,13 +600,20 @@ wakeup1(void *chan)
   {
     if(p->state == SLEEPING && p->chan == chan)
     {
+      //if(!holding(&wakeuplock));
+      //{
+	//cprintf("wakeup1, p->pid = %d\n",p->pid);
+	 // acquire(&wakeuplock);
+      //}
       if(p->swappingOut == 1)
 	p->wokenUp = 1;
       else
 	p->state = RUNNABLE;
+      //release(&wakeuplock);
     }
     else if(p->state == SLEEPING_SUSPENDED && p->chan == chan && !found_suspended)	//check if any proc is SLEEPING_SUSPENDED
     {
+      //cprintf("proc = %d\n",proc->pid);
       acquire(&swaplock);
       swappedout++;								//increment swapped out counter
       p->state = RUNNABLE_SUSPENDED;						//set state to RUNNABLE_SUSPENDED
