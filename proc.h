@@ -70,7 +70,8 @@ struct proc {
   char name[16];               // Process name (debugging)
   struct file *swap;		// Swap file for process
   char swapFileName[8];	// Swap file name
-  int isSwapped;		// Swap flag
+  int swappingOut;		// Swap flag
+  int wokenUp;			// wakeup flag
   int has_shm;			//indicator for shared memory
 };
 

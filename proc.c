@@ -225,11 +225,8 @@ swapOut()
 	break;
       }
     }
-    
     proc->swap=0;
     deallocuvm(proc->pgdir,proc->sz,0);					//release user virtual memory
-    proc->state = SLEEPING_SUSPENDED;					//set proc to SLEEPING_SUSPENDED
-    proc->swappingOut = 0;						//set flag indicating proc is swapped out
 }
 
 //PAGEBREAK: 32
@@ -559,6 +556,11 @@ sleep(void *chan, struct spinlock *lk)
 	proc->state = RUNNABLE_SUSPENDED;
 	inswapper->state = RUNNABLE;
       }
+      else
+      {
+	proc->state = SLEEPING_SUSPENDED;					//set proc to SLEEPING_SUSPENDED
+	proc->swappingOut = 0;						//set flag indicating proc is swapped out
+      }
     }
   }
   
@@ -586,9 +588,12 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if(p->state == SLEEPING && p->chan == chan)
-      p->state = RUNNABLE;
-    if(p->swappingOut == 1)
-      proc->wokenUp = 1;
+    {
+      if(p->swappingOut == 1)
+	p->wokenUp = 1;
+      else
+	p->state = RUNNABLE;
+    }
     else if(p->state == SLEEPING_SUSPENDED && p->chan == chan && !found_suspended)	//check if any proc is SLEEPING_SUSPENDED
     {
       acquire(&swaplock);
