@@ -4,6 +4,7 @@
 #include "spinlock.h"
 #include "fs.h"
 #include "buf.h"
+#include "x86.h"
 
 // Simple logging. Each system call that might write the file system
 // should be surrounded with begin_trans() and commit_trans() calls.
@@ -125,8 +126,11 @@ void
 begin_trans(void)
 {
   acquire(&log.lock);
-  while (log.busy) {
-  sleep(&log, &log.lock);
+  while (log.busy) {		//changed sleep to busy - waiting to avoid deadlocks
+  //sleep(&log, &log.lock);
+    release(&log.lock);
+    sti();
+    acquire(&log.lock);
   }
   log.busy = 1;
   release(&log.lock);
@@ -144,7 +148,7 @@ commit_trans(void)
   
   acquire(&log.lock);
   log.busy = 0;
-  wakeup(&log);
+  //wakeup(&log);
   release(&log.lock);
 }
 

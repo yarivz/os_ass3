@@ -17,12 +17,12 @@ struct {
 } ptable;
 
 static struct proc *initproc;
-static struct proc *inswapper;
-static struct spinlock swaplock;
+static struct proc *inswapper;		//the inswapper proc
+static struct spinlock swaplock;	//spinlock to sync access to the inswapper
 
 int nextpid = 1;
-int swapFlag = 0;
-int swappedout = 0;
+int swapFlag = 0;			//global flag to indicate if swapping is enabled (1) or disabled (0)
+int swappedout = 0;			//counter for the number of procs in the RUNNABLE_SUSPENDED state
 
 extern void forkret(void);
 extern void trapret(void);
@@ -79,7 +79,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-  int i = 0;
+  int i = 0;						//added a swpFileName field to each proc which is determined on proc creation
   char name[8];
   name[2] = '.'; name[3] = 's'; name[4] = 'w'; name[5] = 'a'; name[6] = 'p'; name[7] = 0;
   name[1] = (char)(((int)'0')+p->pid % 10);
@@ -93,7 +93,7 @@ found:
 }
 
 
-void createInternalProcess(const char *name, void (*entrypoint)())
+void createInternalProcess(const char *name, void (*entrypoint)())		//create a kernel process
 {
   struct proc *np;
 
@@ -106,7 +106,7 @@ void createInternalProcess(const char *name, void (*entrypoint)())
       panic("inswapper: out of memory?");
 
   np->sz = PGSIZE;
-  np->parent = initproc;
+  np->parent = initproc;				//set parent to init
   memset(np->tf, 0, sizeof(*np->tf));
   np->tf->cs = (SEG_KCODE << 3)|0;
   np->tf->ds = (SEG_KDATA << 3)|0;
@@ -115,29 +115,29 @@ void createInternalProcess(const char *name, void (*entrypoint)())
   np->tf->eflags = FL_IF;
   //np->tf->esp = (uint)entrypoint+PGSIZE;
   //np->tf->eip = (uint)entrypoint;
-  np->context->eip = (uint)entrypoint;
+  np->context->eip = (uint)entrypoint;			//set eip to entrypoint so proc will start running there
 
   inswapper = np;
-  np->cwd = namei("/");
+  np->cwd = namei("/");					//set cwd to root so all swap files are created there
   safestrcpy(np->name, name, sizeof(name));
   np->state = RUNNABLE;
 }
 
-void swapIn()
+void swapIn()						//the inswapper's function
 {
   struct proc* t;
   for(;;)
   {
 swapin:
-    for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)
+    for(t = ptable.proc; t < &ptable.proc[NPROC]; t++)	//run over all of ptable and look for RUNNABLE_SUSPENDED
     {
       if(t->state != RUNNABLE_SUSPENDED)
 	continue;
       
       //open file pid.swap
-      if(holding(&ptable.lock))
+      if(holding(&ptable.lock))				//release ptable before every file operation and acquire it afterwards
 	release(&ptable.lock);
-      if((t->swap = fileopen(t->swapFileName,O_RDONLY)) == 0)
+      if((t->swap = fileopen(t->swapFileName,O_RDONLY)) == 0)	//open the swapfile
       {
 	cprintf("fileopen failed\n");
 	acquire(&ptable.lock);
@@ -146,9 +146,9 @@ swapin:
       acquire(&ptable.lock);
             
       // allocate virtual memory
-      if((t->pgdir = setupkvm(kalloc)) == 0)
-	panic("inswapper: out of memory?");
-      if(!allocuvm(t->pgdir, 0, t->sz))
+//       if((t->pgdir = setupkvm(kalloc)) == 0)			
+// 	panic("inswapper: out of memory?");
+      if(!allocuvm(t->pgdir, 0, t->sz))				//allocate virtual memory
       {
 	cprintf("allocuvm failed\n");
 	break;
@@ -156,34 +156,31 @@ swapin:
       
       if(holding(&ptable.lock))
 	release(&ptable.lock);
-      loaduvm(t->pgdir,0,t->swap->ip,0,t->sz);
+      loaduvm(t->pgdir,0,t->swap->ip,0,t->sz);			//load the swap file content to memory
       
-      t->isSwapped = 0;
       int fd;
       for(fd = 0; fd < NOFILE; fd++)
       {
-	//cprintf("fd = %d, t->ofile[fd] = %d, t->swap = %d\n",fd,proc->ofile[fd], t->swap);
-	if(proc->ofile[fd] && proc->ofile[fd] == t->swap)
+	if(proc->ofile[fd] && proc->ofile[fd] == t->swap)	//close the swap file
 	{
-	  //cprintf("fileclose swap in\n");
 	  fileclose(proc->ofile[fd]);
 	  proc->ofile[fd] = 0;
 	  break;
 	}
       }
       t->swap=0;
-      unlink(t->swapFileName);
+      unlink(t->swapFileName);					//delete the swap file
       
       acquire(&ptable.lock);
       t->state = RUNNABLE;
       
       acquire(&swaplock);
-      swappedout--;
+      swappedout--;						//update swapped out counter atomically
       release(&swaplock);
     }
    
     acquire(&swaplock);
-    if(swappedout > 0)
+    if(swappedout > 0)						//check if should sleep
     {
       release(&swaplock);
       goto swapin;
@@ -192,7 +189,7 @@ swapin:
       release(&swaplock);
 
     proc->chan = inswapper;
-    proc->state = SLEEPING;
+    proc->state = SLEEPING;					//set inswapper to sleeping
      
      sched();
      proc->chan = 0;
@@ -202,35 +199,37 @@ swapin:
 void
 swapOut()
 {
-    proc->swap = fileopen(proc->swapFileName,(O_CREATE | O_RDWR));
+    proc->swap = fileopen(proc->swapFileName,(O_CREATE | O_RDWR));	//create the swapfile
     pte_t *pte;
     uint pa, j;
     for(j = 0; j < proc->sz; j += PGSIZE)
     {
-      if((pte = walkpgdir(proc->pgdir, (void *) j, 0)) == 0)
+      if((pte = walkpgdir(proc->pgdir, (void *) j, 0)) == 0)		//traverse proc's virtual memory and find valid PTEs 
 	panic("walkpgdir: pte should exist");
       if(!(*pte & PTE_P))
 	panic("walkpgdir: page not present");
       pa = PTE_ADDR(*pte);
-      if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0)
-	panic("filewrite failed");
+      if(filewrite(proc->swap, (char*)p2v(pa), PGSIZE) < 0){		//write each PTE found to swapfile
+	cprintf("could not swap out proc pid %d, filewrite failed\n",proc->pid);
+	return;
+      }
     }
 
     int fd;
     for(fd = 0; fd < NOFILE; fd++)
     {
-      if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)
+      if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)		//close swapfile
       {
 	fileclose(proc->ofile[fd]);
 	proc->ofile[fd] = 0;
 	break;
       }
     }
+    
     proc->swap=0;
-    //freevm(proc->pgdir);
-    deallocuvm(proc->pgdir,proc->sz,0);
-    proc->state = SLEEPING_SUSPENDED;
-    proc->isSwapped = 1;
+    deallocuvm(proc->pgdir,proc->sz,0);					//release user virtual memory
+    proc->state = SLEEPING_SUSPENDED;					//set proc to SLEEPING_SUSPENDED
+    proc->swappingOut = 0;						//set flag indicating proc is swapped out
 }
 
 //PAGEBREAK: 32
@@ -546,13 +545,20 @@ sleep(void *chan, struct spinlock *lk)
   proc->state = SLEEPING;
 
   // Swap out
-  if(swapFlag)
+  if(swapFlag)			//check if swapping out is enabled
   {
-    if(proc->pid > 3)
+    if(proc->pid > 2)		//do not allow init and inswapper to swapout
     {
-      release(&ptable.lock);
-      swapOut();
+      proc->wokenUp = 0;
+      proc->swappingOut = 1;
+      release(&ptable.lock);	
+      swapOut();		//swap out proc
       acquire(&ptable.lock);
+      if(proc->wokenUp == 1)
+      {
+	proc->state = RUNNABLE_SUSPENDED;
+	inswapper->state = RUNNABLE;
+      }
     }
   }
   
@@ -581,12 +587,14 @@ wakeup1(void *chan)
   {
     if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;
-    if(p->state == SLEEPING_SUSPENDED && p->chan == chan && !found_suspended)
+    if(p->swappingOut == 1)
+      proc->wokenUp = 1;
+    else if(p->state == SLEEPING_SUSPENDED && p->chan == chan && !found_suspended)	//check if any proc is SLEEPING_SUSPENDED
     {
       acquire(&swaplock);
-      swappedout++;
-      p->state = RUNNABLE_SUSPENDED;
-      inswapper->state = RUNNABLE;
+      swappedout++;								//increment swapped out counter
+      p->state = RUNNABLE_SUSPENDED;						//set state to RUNNABLE_SUSPENDED
+      inswapper->state = RUNNABLE;						//wakeup inswapper
       release(&swaplock);
     }
   }
@@ -616,7 +624,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
-      else if(p->state == SLEEPING_SUSPENDED)
+      else if(p->state == SLEEPING_SUSPENDED)			//same as wakeup1 - swap in any killed process that is swapped out
       {
         acquire(&swaplock);
       	swappedout++;
@@ -669,7 +677,7 @@ procdump(void)
   }
 }
 
-int getAllocatedPages(int pid) {
+int getAllocatedPages(int pid) {			//traverse the process with the given pid's virtual memory and count how many PTE_U pages are allocated
   struct proc* p;
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){

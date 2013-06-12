@@ -1615,12 +1615,17 @@ main(int argc, char *argv[])
     exit();
   }
   close(open("usertests.ran", O_CREATE));
-
+  
+  enableSwapping();
+  
   bigargtest();
   bigwrite();
   bigargtest();
   bsstest();
+  
+  disableSwapping();
   sbrktest();
+  enableSwapping();
   validatetest();
 
   opentest();

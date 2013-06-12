@@ -23,10 +23,10 @@ struct {
   struct run *freelist;
 } kmem;
 
-struct {
-  char* seg[numOfSegs][numOfSegs];
-  int refs[numOfSegs][2][65];
-  struct spinlock lock;
+struct {				//shared memory segments structure
+  char* seg[numOfSegs][numOfSegs];	//segments array
+  int refs[numOfSegs][2][65];		//metadata array	
+  struct spinlock lock;			//sync lock
 } shm;
 
 // Initialization happens in two phases.
@@ -103,7 +103,7 @@ kalloc(void)
 
 
 int 
-shmget(int key, uint size, int shmflg)
+shmget(int key, uint size, int shmflg)		//allocate shared mem segment
 {
   int numOfPages,i,j,ans;
   uint sz;
@@ -113,27 +113,27 @@ shmget(int key, uint size, int shmflg)
     return -1;
   }
   
-  switch(shmflg)
+  switch(shmflg)				//switch on flag
   {
-    case CREAT:
-      if(shm.refs[key][1][64] == 0)
+    case CREAT:					//creating a new segment
+      if(shm.refs[key][1][64] == 0)		//check a segment with the key does not already exist
       {
-	sz = PGROUNDUP(size);
+	sz = PGROUNDUP(size);			//round the size up to a factor of PGSIZE
 	numOfPages = sz/PGSIZE;
 	for(i=0;i<numOfPages;i++)
 	{
-	  if((shm.seg[key][i] = kalloc()) == 0)
+	  if((shm.seg[key][i] = kalloc()) == 0)	//allocate the physical pages and save their kernel addresses in the seg array
 	    break;
 	}
-	if(i == numOfPages)
+	if(i == numOfPages)			//make sure the requested number of pages was allocated
 	{
-	  ans = (int)shm.seg[key][0];
+	  ans = (int)shm.seg[key][0];		//return the kernel addres of the first mem page in the segment as shmid
 	  shm.refs[key][1][64] = numOfPages;
 	}
 	else
 	{
 	  for(j=0;j<i;j++)
-	    kfree(shm.seg[key][j]);
+	    kfree(shm.seg[key][j]);		//if failed to allocate all of the requested pages, free te pages already allocated and return -1
 	  ans = -1;
 	}
       }
@@ -142,25 +142,25 @@ shmget(int key, uint size, int shmflg)
 	ans = -1;
       }
       break;
-    case GET:
-      if(!shm.refs[key][1][64])
+    case GET:					//get a pre-allocated segment's shmid
+      if(!shm.refs[key][1][64])			//make sure the segment was allocated, if not return -1
 	ans = -1;
       else
-	ans = (int)shm.seg[key][0];
+	ans = (int)shm.seg[key][0];		//return the kernel addres of the first mem page in the segment as shmid
       break;
   }
   return ans;
 }
 
 int 
-shmdel(int shmid)
+shmdel(int shmid)				//de-allocate shared memory segment
 {
   int key,ans = -1,numOfPages,i;
-  for(key = 0;key<numOfSegs;key++)
+  for(key = 0;key<numOfSegs;key++)		//go over all keys and look for a segment matching shmid
   {
     if(shmid == (int)shm.seg[key][0])
     {
-      if(shm.refs[key][0][64]>0)
+      if(shm.refs[key][0][64]>0)		//make sure no references remain to the seg, if >0 return -1
       {
 	break;
       }
@@ -169,11 +169,11 @@ shmdel(int shmid)
 	numOfPages=shm.refs[key][1][64];
 	for(i=0;i<numOfPages;i++)
 	{
-	    kfree(shm.seg[key][i]);
+	    kfree(shm.seg[key][i]);		//deallocate all pages of the segment
 	    shm.refs[key][1][64]--;
 	}
       }
-      ans = numOfPages;
+      ans = numOfPages;				//return number of pages deallocated
       break;
     }
   }  
@@ -181,7 +181,7 @@ shmdel(int shmid)
 }
 
 void *
-shmat(int shmid, int shmflg)
+shmat(int shmid, int shmflg)			//attach a shared mem segment to virtual mem
 {
   int i,key,forFlag=0;
   void* ans = (void*)-1;
@@ -189,41 +189,41 @@ shmat(int shmid, int shmflg)
   uint a;
 
   acquire(&shm.lock);
-  for(key = 0;key<numOfSegs;key++)
+  for(key = 0;key<numOfSegs;key++)		//go over all segments and look for shmid
   {
     if(shmid == (int)shm.seg[key][0])
     {
-      if(shm.refs[key][1][64]>0)
+      if(shm.refs[key][1][64]>0)		//make sure segment is allocated
       {
 	a = PGROUNDUP(proc->sz);
 	ans = (void*)a;
-	if(a + PGSIZE >= KERNBASE)
+	if(a + PGSIZE >= KERNBASE)		//make sure the proc is not exceeding its virtual address space bounderies
 	{
 	  ans = (void*)-1;
 	  break;
 	}
 	
 	shm.refs[key][0][64]++;
-	shm.refs[key][0][proc->pid] = 1;
-	proc->has_shm++;
+	shm.refs[key][0][proc->pid] = 1;	//set flag to indicate this proc attached to the seg
+	proc->has_shm++;			//increment counter to indicate amount of attached segments for the proc
 	
-	for(i = 0;i < shm.refs[key][1][64] && a < KERNBASE;i++,a += PGSIZE)
+	for(i = 0;i < shm.refs[key][1][64] && a < KERNBASE;i++,a += PGSIZE)	//go over all pages in segment and map them to virtual addresses
 	{
 	    forFlag = 1;
 	    mem = shm.seg[key][i];
 	    switch(shmflg)
 	    {
 	      case SHM_RDONLY:
-		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_U);
+		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_U);	//map page as read-only
 		break;
 	      case SHM_RDWR:
-		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
+		mappages(proc->pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);	//map page as read & write
 		break;
 	      default:
 		forFlag = 0;
 	    } 
 	}
-	if(forFlag)
+	if(forFlag)					//update proc size
 	  proc->sz = a;
 	else
 	  ans = (void*)-1;
@@ -238,28 +238,28 @@ shmat(int shmid, int shmflg)
 }
 
 int 
-shmdt(const void *shmaddr)
+shmdt(const void *shmaddr)			//detach shared memory from virtual addresses
 {
   pte_t *pte;
   uint r, numOfPages;
   int key,found;
-  pte = walkpgdir(proc->pgdir, (char*)shmaddr, 0);
-  r = (int)p2v(PTE_ADDR(*pte)) ;
+  pte = walkpgdir(proc->pgdir, (char*)shmaddr, 0); 	//get PTE that matches shmaddr
+  r = (int)p2v(PTE_ADDR(*pte)) ;			//translate PTE to kernel address of page
   acquire(&shm.lock);
-  for(found = 0,key = 0;key<numOfSegs;key++)
+  for(found = 0,key = 0;key<numOfSegs;key++)	//go over segments and look for a match
   {    
     if((int)shm.seg[key][0] == r)
     {  
-      if(shm.refs[key][1][64]>0)
+      if(shm.refs[key][1][64]>0)		//make sure segment is allocated
       { 
-	if(shm.refs[key][0][64] <= 0)
+	if(shm.refs[key][0][64] <= 0)		//make sure reference count is in order
 	{
 	  cprintf("shmdt exception - trying to detach a segment with no references\n");
 	  return -1;
 	}
-	shm.refs[key][0][64]--;
-	shm.refs[key][0][proc->pid] = 0;
-	proc->has_shm--;
+	shm.refs[key][0][64]--;			//decrement reference count for seg
+	shm.refs[key][0][proc->pid] = 0;	//remove flag indicating the proc with pid attached the seg
+	proc->has_shm--;			//decrement the counter of how many segs the proc has attached
 	numOfPages = shm.refs[key][1][64];
 	found = 1;
 	break;
@@ -278,7 +278,7 @@ shmdt(const void *shmaddr)
 
   void *shmaddr2 = (void*)shmaddr;
 
-  for(; shmaddr2  < shmaddr + numOfPages*PGSIZE; shmaddr2 += PGSIZE)
+  for(; shmaddr2  < shmaddr + numOfPages*PGSIZE; shmaddr2 += PGSIZE)	//go over proc's virtual memory and delete the PTEs holding the shared mem segment
   {
     pte = walkpgdir(proc->pgdir, (char*)shmaddr2, 0);
     if(!pte)
@@ -290,20 +290,20 @@ shmdt(const void *shmaddr)
 }
 
 void 
-deallocshm(int pid)
+deallocshm(int pid)			//de-allocate any left over shared memory if proc exited without calling shmdt
 {
   uint a = 0;
   int key, pa, numOfPages;
   pte_t *pte;
   
   acquire(&shm.lock);
-  for(key = 0;key<numOfSegs;key++)
+  for(key = 0;key<numOfSegs;key++)	//go over all segs and look for the proc's pid in metadata array to indicate which segs are attached to it
   {    
     if(shm.refs[key][0][proc->pid])
     {
       for(; a  < proc->sz; a += PGSIZE)
       {
-	pte = walkpgdir(proc->pgdir, (char*)a, 0);
+	pte = walkpgdir(proc->pgdir, (char*)a, 0);	//go over proc's virtual mem and find the PTE holding the seg address
 	if(!pte)
 	  a += (NPTENTRIES - 1) * PGSIZE;
 	else if((*pte & PTE_P) != 0)
@@ -313,7 +313,7 @@ deallocshm(int pid)
 	  {
 	    void *b = (void*)a;
 	    numOfPages = shm.refs[key][1][64];
-	    for(; b  < (void*)a + numOfPages*PGSIZE; b += PGSIZE)
+	    for(; b  < (void*)a + numOfPages*PGSIZE; b += PGSIZE)	//when found, deallocate the required number of pages from virtual mem
 	    {
 	      pte = walkpgdir(proc->pgdir, (char*)b, 0);
 	      if(!pte)
@@ -321,7 +321,7 @@ deallocshm(int pid)
 	      *pte = 0;
 	    }
 	    if(shm.refs[key][0][64]>0)
-	      shm.refs[key][0][64]--;
+	      shm.refs[key][0][64]--;					//decrement the seg ref count
 	    break;
 	  }
 	}
