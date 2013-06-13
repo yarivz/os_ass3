@@ -201,7 +201,11 @@ swapin:
 void
 swapOut()
 {
-    proc->swap = fileopen(proc->swapFileName,(O_CREATE | O_RDWR));	//create the swapfile
+    if((proc->swap = fileopen(proc->swapFileName,(O_CREATE | O_RDWR))) == 0)	//create the swapfile
+    {
+	cprintf("could not create swapfile %s\n",proc->swapFileName);
+	return;
+    }
     pte_t *pte;
     uint pa, j;
     for(j = 0; j < proc->sz; j += PGSIZE)
@@ -228,7 +232,7 @@ swapOut()
       }
     }
     proc->swap=0;
-    deallocuvm(proc->pgdir,proc->sz,0);					//release user virtual memory
+    deallocuvm(proc->pgdir,proc->sz,0);				//release user virtual memory
 }
 
 //PAGEBREAK: 32

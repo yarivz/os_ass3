@@ -333,15 +333,15 @@ fileopen(char *path, int omode)
 
   if(omode & O_CREATE){
     begin_trans();
-    ip = create(path, T_FILE, 0, 0);
+    ip = create(path, T_FILE, 0, 0);cprintf("1\n");
     commit_trans();
     if(ip == 0)
       return 0;
   } else {
     if((ip = namei(path)) == 0)
-      return 0;
+      return 0;cprintf("4\n");
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if(ip->type == T_DIR && omode != O_RDONLY){cprintf("5\n");
       iunlockput(ip);
       return 0;
     }
