@@ -327,27 +327,26 @@ create(char *path, short type, short major, short minor)
 struct file*
 fileopen(char *path, int omode)
 {
-  int fd;
+  //int fd;
   struct file *f;
   struct inode *ip;
 
   if(omode & O_CREATE){
     begin_trans();
-    ip = create(path, T_FILE, 0, 0);cprintf("1\n");
+    ip = create(path, T_FILE, 0, 0);
     commit_trans();
     if(ip == 0)
       return 0;
   } else {
     if((ip = namei(path)) == 0)
-      return 0;cprintf("4\n");
+      return 0;
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){cprintf("5\n");
+    if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       return 0;
     }
   }
-
-  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+  if((f = filealloc()) == 0 /*|| (fd = fdalloc(f)) < 0*/){
     if(f)
       fileclose(f);
     iunlockput(ip);

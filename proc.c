@@ -142,10 +142,10 @@ swapin:
       if((t->swap = fileopen(t->swapFileName,O_RDONLY)) == 0)	//open the swapfile
       {
 	cprintf("fileopen failed\n");
-	acquire(&ptable.lock);
+	//acquire(&ptable.lock);
 	break;
-      }
-      acquire(&ptable.lock);
+      }cprintf("1\n");
+      //acquire(&ptable.lock);
             
       // allocate virtual memory
 //       if((t->pgdir = setupkvm(kalloc)) == 0)			
@@ -156,22 +156,23 @@ swapin:
 	break;
       }
       
-      if(holding(&ptable.lock))
-	release(&ptable.lock);
+//       if(holding(&ptable.lock))
+// 	release(&ptable.lock);
       loaduvm(t->pgdir,0,t->swap->ip,0,t->sz);			//load the swap file content to memory
       
-      int fd;
-      for(fd = 0; fd < NOFILE; fd++)
-      {
-	if(proc->ofile[fd] && proc->ofile[fd] == t->swap)	//close the swap file
-	{
-	  fileclose(proc->ofile[fd]);
-	  proc->ofile[fd] = 0;
-	  break;
-	}
-      }
+//       int fd;
+//       for(fd = 0; fd < NOFILE; fd++)
+//       {
+// 	if(proc->ofile[fd] && proc->ofile[fd] == t->swap)	//close the swap file
+// 	{
+// 	  fileclose(proc->ofile[fd]);
+// 	  proc->ofile[fd] = 0;
+// 	  break;
+// 	}
+//       }
+      fileclose( t->swap);
       t->swap=0;
-      unlink(t->swapFileName);					//delete the swap file
+      unlink(t->swapFileName);	cprintf("3\n");				//delete the swap file
       
       acquire(&ptable.lock);
       t->state = RUNNABLE;
@@ -205,7 +206,7 @@ swapOut()
     {
 	cprintf("could not create swapfile %s\n",proc->swapFileName);
 	return;
-    }
+    }cprintf("2\n");
     pte_t *pte;
     uint pa, j;
     for(j = 0; j < proc->sz; j += PGSIZE)
@@ -221,16 +222,17 @@ swapOut()
       }
     }
 
-    int fd;
-    for(fd = 0; fd < NOFILE; fd++)
-    {
-      if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)		//close swapfile
-      {
-	fileclose(proc->ofile[fd]);
-	proc->ofile[fd] = 0;
-	break;
-      }
-    }
+//     int fd;
+//     for(fd = 0; fd < NOFILE; fd++)
+//     {
+//       if(proc->ofile[fd] && proc->ofile[fd] == proc->swap)		//close swapfile
+//       {
+// 	fileclose(proc->ofile[fd]);
+// 	proc->ofile[fd] = 0;
+// 	break;
+//       }
+//     }
+    fileclose(proc->swap);
     proc->swap=0;
     deallocuvm(proc->pgdir,proc->sz,0);				//release user virtual memory
 }
